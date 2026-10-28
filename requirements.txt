@@ -1,0 +1,13 @@
+# Python dependencies for Job Hunter.
+#
+#   python3 -m venv .venv && source .venv/bin/activate
+#   pip install -r requirements.txt
+#
+# The portal CLIs are TypeScript and use bun instead - see README.md.
+
+# Reads and writes the YAML profile files (profiles/inputs.yaml, persona files).
+PyYAML>=6.0
+
+# Extracts text from PDF resumes. Without it, only .txt and .docx resumes can
+# be read; tools/extract_resume.py reports a clear error if a PDF needs it.
+pypdf>=4.0

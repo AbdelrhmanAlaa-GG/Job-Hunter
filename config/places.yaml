@@ -1,0 +1,1566 @@
+# The place catalogue: every geography a user can ask for, and what each
+# portal calls it.
+#
+# One hierarchy for everyone. Denmark is not special, Egypt is not special -
+# a place is a place, and the catalogue decides how each portal expresses it.
+#
+# `regions` are macro-geographies. `countries` are ISO-3166 alpha-2. Each entry
+# carries, per portal, the value that portal's geography flag takes. A portal
+# that is absent from `values` cannot express that place at all.
+#
+# `scope` marks a value that is wider than the place it stands for.
+# `note` explains why. Both are surfaced in the search contract, so a widened
+# search is visible instead of silently wrong.
+#
+# Every value below was checked against the live portal. Several obvious
+# spellings are NOT what a portal expects, and they fail silently rather than
+# loudly - LinkedIn resolves "Jordan" to Pennsylvania, "Lebanon" to
+# Pennsylvania, "Armenia" to Colombia, "Gulf" to Australia and "CIS" to Italy.
+# Those places therefore carry a qualified place string ("Amman, Jordan").
+#
+# To add a place: add the entry, then verify each portal's value against the
+# live API before trusting it.
+
+version: 1
+
+regions:
+
+  anywhere:
+    name: Anywhere
+    aliases:
+      - anywhere
+      - worldwide
+      - world
+      - global
+      - international
+      - remote
+      - work from anywhere
+      - anywhere in the world
+      - no location preference
+    parent: null
+    values:
+      freehire-search: {region: "global,none", remote: remote}
+      linkedin-search: {location: Remote, remote: remote}
+      jobicy-search: {location: anywhere}
+    notes:
+      freehire-search: >-
+        The global bucket plus the unresolved-region bucket, which is where
+        postings with no parseable location land.
+      linkedin-search: >-
+        LinkedIn's "Remote" place is the worldwide remote market. "Worldwide"
+        is not a place it resolves and falls back to an unrelated market.
+
+  emea:
+    name: Europe, Middle East and Africa
+    aliases:
+      - emea
+      - europe middle east and africa
+      - europe, middle east and africa
+      - emea region
+    parent: anywhere
+    values:
+      freehire-search: {region: "eu,uk,mena,africa"}
+      linkedin-search: {location: [Europe, "Middle East", Africa]}
+      jobicy-search: {location: emea}
+    notes:
+      linkedin-search: >-
+        LinkedIn has no EMEA place, so this is three searches - Europe, the
+        Middle East and Africa.
+
+  european_union:
+    name: European Union
+    aliases:
+      - eu
+      - european union
+      - eu-27
+      - eu 27
+      - europe union
+    parent: emea
+    values:
+      freehire-search:
+        region: eu
+        scope: wider
+        note: >-
+          freehire's EU bucket also holds UK postings. It has no EU-only value.
+      linkedin-search: {location: European Union}
+      jobicy-search:
+        location: europe
+        scope: wider
+        note: >-
+          Jobicy has no EU slug. Its Europe bucket also covers the UK.
+    notes:
+      freehire-search: >-
+        Adding --region uk does not narrow this: freehire's EU bucket already
+        contains UK postings.
+
+  europe:
+    name: Europe
+    aliases:
+      - europe
+      - european
+      - continental europe
+      - europe region
+    parent: emea
+    values:
+      freehire-search: {region: eu}
+      linkedin-search: {location: Europe}
+      jobicy-search: {location: europe}
+    notes:
+      freehire-search: >-
+        The eu bucket already contains UK postings, so it is the whole of
+        Europe for this purpose.
+
+  mena:
+    name: Middle East and North Africa
+    aliases:
+      - mena
+      - middle east
+      - middle east and north africa
+      - north africa and middle east
+      - arab countries
+      - arab world
+      - gcc
+      - gulf and levant
+    parent: emea
+    values:
+      freehire-search: {region: mena}
+      linkedin-search: {location: Middle East}
+      jobicy-search:
+        location: emea
+        scope: wider
+        note: >-
+          Jobicy has no MENA slug. Its EMEA bucket also covers Europe, Israel
+          and Turkiye.
+    notes:
+      linkedin-search: >-
+        "Gulf" and "Arabian Peninsula" are not places LinkedIn resolves - they
+        fall back to unrelated markets. Use "Middle East".
+
+  africa:
+    name: Africa
+    aliases:
+      - africa
+      - african
+      - sub-saharan africa
+      - sub saharan africa
+      - continent of africa
+    parent: emea
+    values:
+      freehire-search: {region: africa}
+      linkedin-search: {location: Africa}
+      jobicy-search:
+        location: emea
+        scope: wider
+        note: >-
+          Jobicy has no Africa slug. Its EMEA bucket also covers Europe and
+          the Middle East.
+
+  north_america:
+    name: North America
+    aliases:
+      - north america
+      - north american
+      - na
+      - usa and canada
+      - united states and canada
+      - north america region
+    parent: anywhere
+    values:
+      freehire-search: {region: north_america}
+      linkedin-search: {location: North America}
+      jobicy-search:
+        location: [usa, canada]
+        scope: wider
+        note: >-
+          Jobicy has no North America slug. It splits the region into two
+          country slugs.
+    notes:
+      linkedin-search: >-
+        "North America" resolves correctly; "NA" does not.
+
+  latam:
+    name: Latin America
+    aliases:
+      - latam
+      - latin america
+      - south america
+      - central america
+      - south and central america
+      - latin american
+    parent: anywhere
+    values:
+      freehire-search: {region: latam}
+      linkedin-search: {location: Latin America}
+      jobicy-search: {location: latam}
+    notes:
+      linkedin-search: >-
+        "Caribbean" and "Central America" are not places LinkedIn resolves -
+        they fall back to unrelated markets.
+
+  apac:
+    name: Asia-Pacific
+    aliases:
+      - apac
+      - asia pacific
+      - asia-pacific
+      - asia
+      - asia pacific region
+      - oceania
+    parent: anywhere
+    values:
+      freehire-search: {region: apac}
+      linkedin-search: {location: Asia-Pacific}
+      jobicy-search: {location: apac}
+    notes:
+      linkedin-search: >-
+        "Central Asia", "West Africa", "Levant", "Balkans" and "Iberia" are not
+        places LinkedIn resolves - they fall back to unrelated markets.
+
+  cis:
+    name: Commonwealth of Independent States
+    aliases:
+      - cis
+      - commonwealth of independent states
+      - ex-soviet union
+      - former soviet union
+      - post-soviet states
+    parent: anywhere
+    values:
+      freehire-search: {region: cis}
+    notes:
+      linkedin-search: >-
+        LinkedIn resolves no CIS place string correctly. "CIS" returns Italy
+        and "Commonwealth of Independent States" returns Pennsylvania, so this
+        region has no LinkedIn target at all.
+      jobicy-search: >-
+        Jobicy's location taxonomy has no CIS slug.
+
+countries:
+
+  # --- Middle East and North Africa -------------------------------------
+
+  EG:
+    name: Egypt
+    aliases: [egypt, egyptian, egy]
+    parent: mena
+    values:
+      freehire-search: {country: EG}
+      linkedin-search: {location: Egypt}
+
+  SA:
+    name: Saudi Arabia
+    aliases: [saudi arabia, saudi, ksa, kingdom of saudi arabia]
+    parent: mena
+    values:
+      freehire-search: {country: SA}
+      linkedin-search: {location: Saudi Arabia}
+
+  AE:
+    name: United Arab Emirates
+    aliases: [united arab emirates, uae, emirates]
+    parent: mena
+    values:
+      freehire-search: {country: AE}
+      linkedin-search: {location: United Arab Emirates}
+      jobicy-search: {location: united-arab-emirates}
+
+  QA:
+    name: Qatar
+    aliases: [qatar, state of qatar]
+    parent: mena
+    values:
+      freehire-search: {country: QA}
+      linkedin-search: {location: Qatar}
+
+  KW:
+    name: Kuwait
+    aliases: [kuwait, state of kuwait]
+    parent: mena
+    values:
+      freehire-search: {country: KW}
+      linkedin-search: {location: Kuwait}
+
+  BH:
+    name: Bahrain
+    aliases: [bahrain, kingdom of bahrain]
+    parent: mena
+    values:
+      freehire-search: {country: BH}
+      linkedin-search: {location: Bahrain}
+
+  OM:
+    name: Oman
+    aliases: [oman, sultanate of oman]
+    parent: mena
+    values:
+      freehire-search: {country: OM}
+      linkedin-search: {location: Oman}
+
+  JO:
+    name: Jordan
+    aliases: [jordan, hashemite kingdom of jordan]
+    parent: mena
+    values:
+      freehire-search: {country: JO}
+      linkedin-search: {location: "Amman, Jordan"}
+
+  LB:
+    name: Lebanon
+    aliases: [lebanon, lebanese]
+    parent: mena
+    values:
+      freehire-search: {country: LB}
+      linkedin-search: {location: "Beirut, Lebanon"}
+
+  IQ:
+    name: Iraq
+    aliases: [iraq, iraqi]
+    parent: mena
+    values:
+      freehire-search: {country: IQ}
+      linkedin-search: {location: Iraq}
+
+  SY:
+    name: Syria
+    aliases: [syria, syrian, syrian arab republic]
+    parent: mena
+    values:
+      freehire-search: {country: SY}
+      linkedin-search: {location: Syria}
+
+  YE:
+    name: Yemen
+    aliases: [yemen, yemeni]
+    parent: mena
+    values:
+      freehire-search: {country: YE}
+      linkedin-search: {location: Yemen}
+
+  PS:
+    name: Palestine
+    aliases: [palestine, palestinian territories, west bank and gaza, palestinian authority]
+    parent: mena
+    values:
+      freehire-search: {country: PS}
+      linkedin-search: {location: West Bank and Gaza}
+
+  MA:
+    name: Morocco
+    aliases: [morocco, moroccan, kingdom of morocco]
+    parent: mena
+    values:
+      freehire-search: {country: MA}
+      linkedin-search: {location: Morocco}
+
+  DZ:
+    name: Algeria
+    aliases: [algeria, algerian]
+    parent: mena
+    values:
+      freehire-search: {country: DZ}
+      linkedin-search: {location: Algeria}
+
+  TN:
+    name: Tunisia
+    aliases: [tunisia, tunisian]
+    parent: mena
+    values:
+      freehire-search: {country: TN}
+      linkedin-search: {location: Tunisia}
+
+  LY:
+    name: Libya
+    aliases: [libya, libyan]
+    parent: mena
+    values:
+      freehire-search: {country: LY}
+      linkedin-search: {location: Libya}
+
+  SD:
+    name: Sudan
+    aliases: [sudan, sudanese]
+    parent: mena
+    values:
+      freehire-search: {country: SD}
+      linkedin-search: {location: Sudan}
+
+  MR:
+    name: Mauritania
+    aliases: [mauritania, mauritanian]
+    parent: mena
+    values:
+      freehire-search: {country: MR}
+      linkedin-search: {location: Mauritania}
+
+  TR:
+    name: Turkiye
+    aliases: [turkiye, turkey, turkish]
+    parent: mena
+    values:
+      freehire-search: {country: TR}
+      linkedin-search: {location: Turkey}
+      jobicy-search: {location: turkiye}
+
+  IL:
+    name: Israel
+    aliases: [israel, israeli]
+    parent: mena
+    values:
+      freehire-search: {country: IL}
+      linkedin-search: {location: Israel}
+      jobicy-search: {location: israel}
+
+  # --- Africa ------------------------------------------------------------
+
+  ZA:
+    name: South Africa
+    aliases: [south africa, south african, za]
+    parent: africa
+    values:
+      freehire-search: {country: ZA}
+      linkedin-search: {location: South Africa}
+
+  NG:
+    name: Nigeria
+    aliases: [nigeria, nigerian]
+    parent: africa
+    values:
+      freehire-search: {country: NG}
+      linkedin-search: {location: Nigeria}
+
+  KE:
+    name: Kenya
+    aliases: [kenya, kenyan]
+    parent: africa
+    values:
+      freehire-search: {country: KE}
+      linkedin-search: {location: Kenya}
+
+  ET:
+    name: Ethiopia
+    aliases: [ethiopia, ethiopian]
+    parent: africa
+    values:
+      freehire-search: {country: ET}
+      linkedin-search: {location: Ethiopia}
+
+  GH:
+    name: Ghana
+    aliases: [ghana, ghanaian]
+    parent: africa
+    values:
+      freehire-search: {country: GH}
+      linkedin-search: {location: Ghana}
+
+  TZ:
+    name: Tanzania
+    aliases: [tanzania, tanzanian]
+    parent: africa
+    values:
+      freehire-search: {country: TZ}
+      linkedin-search: {location: Tanzania}
+
+  UG:
+    name: Uganda
+    aliases: [uganda, ugandan]
+    parent: africa
+    values:
+      freehire-search: {country: UG}
+      linkedin-search: {location: Uganda}
+
+  RW:
+    name: Rwanda
+    aliases: [rwanda, rwandan]
+    parent: africa
+    values:
+      freehire-search: {country: RW}
+      linkedin-search: {location: Rwanda}
+
+  SN:
+    name: Senegal
+    aliases: [senegal, senegalese]
+    parent: africa
+    values:
+      freehire-search: {country: SN}
+      linkedin-search: {location: Senegal}
+
+  CI:
+    name: Ivory Coast
+    aliases: [ivory coast, cote d'ivoire, cote divoire]
+    parent: africa
+    values:
+      freehire-search: {country: CI}
+      linkedin-search: {location: Ivory Coast}
+
+  CM:
+    name: Cameroon
+    aliases: [cameroon, cameroonian]
+    parent: africa
+    values:
+      freehire-search: {country: CM}
+      linkedin-search: {location: Cameroon}
+
+  ZM:
+    name: Zambia
+    aliases: [zambia, zambian]
+    parent: africa
+    values:
+      freehire-search: {country: ZM}
+      linkedin-search: {location: Zambia}
+
+  ZW:
+    name: Zimbabwe
+    aliases: [zimbabwe, zimbabwean]
+    parent: africa
+    values:
+      freehire-search: {country: ZW}
+      linkedin-search: {location: Zimbabwe}
+
+  BW:
+    name: Botswana
+    aliases: [botswana, botswanan]
+    parent: africa
+    values:
+      freehire-search: {country: BW}
+      linkedin-search: {location: Botswana}
+
+  NA:
+    name: Namibia
+    aliases: [namibia, namibian]
+    parent: africa
+    values:
+      freehire-search: {country: NA}
+      linkedin-search: {location: Namibia}
+
+  MZ:
+    name: Mozambique
+    aliases: [mozambique, mozambican]
+    parent: africa
+    values:
+      freehire-search: {country: MZ}
+      linkedin-search: {location: Mozambique}
+
+  AO:
+    name: Angola
+    aliases: [angola, angolan]
+    parent: africa
+    values:
+      freehire-search: {country: AO}
+      linkedin-search: {location: Angola}
+
+  MG:
+    name: Madagascar
+    aliases: [madagascar, malagasy]
+    parent: africa
+    values:
+      freehire-search: {country: MG}
+      linkedin-search: {location: Madagascar}
+
+  MW:
+    name: Malawi
+    aliases: [malawi, malawian]
+    parent: africa
+    values:
+      freehire-search: {country: MW}
+      linkedin-search: {location: Malawi}
+
+  MU:
+    name: Mauritius
+    aliases: [mauritius, mauritian]
+    parent: africa
+    values:
+      freehire-search: {country: MU}
+      linkedin-search: {location: Mauritius}
+
+  SC:
+    name: Seychelles
+    aliases: [seychelles, seychellois]
+    parent: africa
+    values:
+      freehire-search: {country: SC}
+      linkedin-search: {location: Seychelles}
+
+  SO:
+    name: Somalia
+    aliases: [somalia, somali]
+    parent: africa
+    values:
+      freehire-search: {country: SO}
+      linkedin-search: {location: Somalia}
+
+  DJ:
+    name: Djibouti
+    aliases: [djibouti, djiboutian]
+    parent: africa
+    values:
+      freehire-search: {country: DJ}
+      linkedin-search: {location: Djibouti}
+
+  ER:
+    name: Eritrea
+    aliases: [eritrea, eritrean]
+    parent: africa
+    values:
+      freehire-search: {country: ER}
+      linkedin-search: {location: Eritrea}
+
+  GA:
+    name: Gabon
+    aliases: [gabon, gabonese]
+    parent: africa
+    values:
+      freehire-search: {country: GA}
+      linkedin-search: {location: Gabon}
+
+  LS:
+    name: Lesotho
+    aliases: [lesotho, basotho]
+    parent: africa
+    values:
+      freehire-search: {country: LS}
+      linkedin-search: {location: Lesotho}
+
+  SZ:
+    name: Eswatini
+    aliases: [eswatini, swaziland]
+    parent: africa
+    values:
+      freehire-search: {country: SZ}
+      linkedin-search: {location: Eswatini}
+
+  BI:
+    name: Burundi
+    aliases: [burundi, burundian]
+    parent: africa
+    values:
+      freehire-search: {country: BI}
+      linkedin-search: {location: Burundi}
+
+  KM:
+    name: Comoros
+    aliases: [comoros, comorian]
+    parent: africa
+    values:
+      freehire-search: {country: KM}
+      linkedin-search: {location: Comoros}
+
+  LR:
+    name: Liberia
+    aliases: [liberia, liberian]
+    parent: africa
+    values:
+      freehire-search: {country: LR}
+      linkedin-search: {location: Liberia}
+
+  GN:
+    name: Guinea
+    aliases: [guinea, guinean]
+    parent: africa
+    values:
+      freehire-search: {country: GN}
+      linkedin-search: {location: Guinea}
+
+  GW:
+    name: Guinea-Bissau
+    aliases: [guinea-bissau, guinea bissau, bissau]
+    parent: africa
+    values:
+      freehire-search: {country: GW}
+      linkedin-search: {location: Guinea-Bissau}
+
+  CV:
+    name: Cape Verde
+    aliases: [cape verde, cabo verde]
+    parent: africa
+    values:
+      freehire-search: {country: CV}
+      linkedin-search: {location: Cape Verde}
+
+  GQ:
+    name: Equatorial Guinea
+    aliases: [equatorial guinea]
+    parent: africa
+    values:
+      freehire-search: {country: GQ}
+      linkedin-search: {location: Equatorial Guinea}
+
+  BJ:
+    name: Benin
+    aliases: [benin, beninese]
+    parent: africa
+    values:
+      freehire-search: {country: BJ}
+      linkedin-search: {location: "Cotonou, Benin"}
+
+  NE:
+    name: Niger
+    aliases: [niger, nigerien]
+    parent: africa
+    values:
+      freehire-search: {country: NE}
+      linkedin-search: {location: "Niamey, Niger"}
+
+  TD:
+    name: Chad
+    aliases: [chad, chadian]
+    parent: africa
+    values:
+      freehire-search: {country: TD}
+      linkedin-search: {location: "N'Djamena, Chad"}
+
+  ML:
+    name: Mali
+    aliases: [mali, malian]
+    parent: africa
+    values:
+      freehire-search: {country: ML}
+      linkedin-search: {location: Mali}
+
+  BF:
+    name: Burkina Faso
+    aliases: [burkina faso]
+    parent: africa
+    values:
+      freehire-search: {country: BF}
+      linkedin-search: {location: Burkina Faso}
+
+  TG:
+    name: Togo
+    aliases: [togo, togolese]
+    parent: africa
+    values:
+      freehire-search: {country: TG}
+      linkedin-search: {location: Togo}
+
+  # --- Europe ------------------------------------------------------------
+
+  GB:
+    name: United Kingdom
+    aliases: [united kingdom, uk, britain, great britain, england, scotland, wales]
+    parent: europe
+    values:
+      freehire-search: {country: GB}
+      linkedin-search: {location: United Kingdom}
+      jobicy-search: {location: uk}
+
+  IE:
+    name: Ireland
+    aliases: [ireland, irish, republic of ireland, eire]
+    parent: europe
+    values:
+      freehire-search: {country: IE}
+      linkedin-search: {location: Ireland}
+      jobicy-search: {location: ireland}
+
+  FR:
+    name: France
+    aliases: [france, french]
+    parent: europe
+    values:
+      freehire-search: {country: FR}
+      linkedin-search: {location: France}
+      jobicy-search: {location: france}
+
+  DE:
+    name: Germany
+    aliases: [germany, german, deutschland]
+    parent: europe
+    values:
+      freehire-search: {country: DE}
+      linkedin-search: {location: Germany}
+      jobicy-search: {location: germany}
+
+  NL:
+    name: Netherlands
+    aliases: [netherlands, dutch, holland, the netherlands]
+    parent: europe
+    values:
+      freehire-search: {country: NL}
+      linkedin-search: {location: Netherlands}
+      jobicy-search: {location: netherlands}
+
+  BE:
+    name: Belgium
+    aliases: [belgium, belgian]
+    parent: europe
+    values:
+      freehire-search: {country: BE}
+      linkedin-search: {location: Belgium}
+      jobicy-search: {location: belgium}
+
+  ES:
+    name: Spain
+    aliases: [spain, spanish, espana]
+    parent: europe
+    values:
+      freehire-search: {country: ES}
+      linkedin-search: {location: Spain}
+      jobicy-search: {location: spain}
+
+  IT:
+    name: Italy
+    aliases: [italy, italian, italia]
+    parent: europe
+    values:
+      freehire-search: {country: IT}
+      linkedin-search: {location: Italy}
+      jobicy-search: {location: italy}
+
+  PT:
+    name: Portugal
+    aliases: [portugal, portuguese]
+    parent: europe
+    values:
+      freehire-search: {country: PT}
+      linkedin-search: {location: Portugal}
+      jobicy-search: {location: portugal}
+
+  PL:
+    name: Poland
+    aliases: [poland, polish, polska]
+    parent: europe
+    values:
+      freehire-search: {country: PL}
+      linkedin-search: {location: Poland}
+      jobicy-search: {location: poland}
+
+  SE:
+    name: Sweden
+    aliases: [sweden, swedish, sverige]
+    parent: europe
+    values:
+      freehire-search: {country: SE}
+      linkedin-search: {location: Sweden}
+      jobicy-search: {location: sweden}
+
+  "NO":
+    name: Norway
+    aliases: [norway, norwegian, norge]
+    parent: europe
+    values:
+      freehire-search: {country: "NO"}
+      linkedin-search: {location: Norway}
+      jobicy-search: {location: norway}
+
+  DK:
+    name: Denmark
+    aliases: [denmark, danish, danmark]
+    parent: europe
+    values:
+      freehire-search: {country: DK}
+      linkedin-search: {location: Denmark}
+      jobicy-search: {location: denmark}
+
+  FI:
+    name: Finland
+    aliases: [finland, finnish, suomi]
+    parent: europe
+    values:
+      freehire-search: {country: FI}
+      linkedin-search: {location: Finland}
+      jobicy-search: {location: finland}
+
+  CH:
+    name: Switzerland
+    aliases: [switzerland, swiss, suisse, schweiz]
+    parent: europe
+    values:
+      freehire-search: {country: CH}
+      linkedin-search: {location: Switzerland}
+      jobicy-search: {location: switzerland}
+
+  AT:
+    name: Austria
+    aliases: [austria, austrian, osterreich]
+    parent: europe
+    values:
+      freehire-search: {country: AT}
+      linkedin-search: {location: Austria}
+      jobicy-search: {location: austria}
+
+  CZ:
+    name: Czechia
+    aliases: [czechia, czech republic, czech]
+    parent: europe
+    values:
+      freehire-search: {country: CZ}
+      linkedin-search: {location: Czechia}
+      jobicy-search: {location: czechia}
+
+  GR:
+    name: Greece
+    aliases: [greece, greek]
+    parent: europe
+    values:
+      freehire-search: {country: GR}
+      linkedin-search: {location: Greece}
+      jobicy-search: {location: greece}
+
+  RO:
+    name: Romania
+    aliases: [romania, romanian]
+    parent: europe
+    values:
+      freehire-search: {country: RO}
+      linkedin-search: {location: Romania}
+      jobicy-search: {location: romania}
+
+  HU:
+    name: Hungary
+    aliases: [hungary, hungarian]
+    parent: europe
+    values:
+      freehire-search: {country: HU}
+      linkedin-search: {location: Hungary}
+      jobicy-search: {location: hungary}
+
+  UA:
+    name: Ukraine
+    aliases: [ukraine, ukrainian]
+    parent: europe
+    values:
+      freehire-search: {country: UA}
+      linkedin-search: {location: Ukraine}
+      jobicy-search: {location: ukraine}
+
+  RS:
+    name: Serbia
+    aliases: [serbia, serbian]
+    parent: europe
+    values:
+      freehire-search: {country: RS}
+      linkedin-search: {location: Serbia}
+      jobicy-search: {location: serbia}
+
+  BG:
+    name: Bulgaria
+    aliases: [bulgaria, bulgarian]
+    parent: europe
+    values:
+      freehire-search: {country: BG}
+      linkedin-search: {location: Bulgaria}
+      jobicy-search: {location: bulgaria}
+
+  HR:
+    name: Croatia
+    aliases: [croatia, croatian]
+    parent: europe
+    values:
+      freehire-search: {country: HR}
+      linkedin-search: {location: Croatia}
+      jobicy-search: {location: croatia}
+
+  SK:
+    name: Slovakia
+    aliases: [slovakia, slovak]
+    parent: europe
+    values:
+      freehire-search: {country: SK}
+      linkedin-search: {location: Slovakia}
+      jobicy-search: {location: slovakia}
+
+  SI:
+    name: Slovenia
+    aliases: [slovenia, slovenian]
+    parent: europe
+    values:
+      freehire-search: {country: SI}
+      linkedin-search: {location: Slovenia}
+      jobicy-search: {location: slovenia}
+
+  LT:
+    name: Lithuania
+    aliases: [lithuania, lithuanian]
+    parent: europe
+    values:
+      freehire-search: {country: LT}
+      linkedin-search: {location: Lithuania}
+      jobicy-search: {location: lithuania}
+
+  LV:
+    name: Latvia
+    aliases: [latvia, latvian]
+    parent: europe
+    values:
+      freehire-search: {country: LV}
+      linkedin-search: {location: Latvia}
+      jobicy-search: {location: latvia}
+
+  EE:
+    name: Estonia
+    aliases: [estonia, estonian]
+    parent: europe
+    values:
+      freehire-search: {country: EE}
+      linkedin-search: {location: Estonia}
+      jobicy-search: {location: estonia}
+
+  IS:
+    name: Iceland
+    aliases: [iceland, icelandic]
+    parent: europe
+    values:
+      freehire-search: {country: IS}
+      linkedin-search: {location: Iceland}
+
+  AL:
+    name: Albania
+    aliases: [albania, albanian, shqiperi]
+    parent: europe
+    values:
+      freehire-search: {country: AL}
+      linkedin-search: {location: Albania}
+
+  BA:
+    name: Bosnia and Herzegovina
+    aliases: [bosnia and herzegovina, bosnia]
+    parent: europe
+    values:
+      freehire-search: {country: BA}
+      linkedin-search: {location: Bosnia and Herzegovina}
+
+  MK:
+    name: North Macedonia
+    aliases: [north macedonia, macedonia, fyrom]
+    parent: europe
+    values:
+      freehire-search: {country: MK}
+      linkedin-search: {location: North Macedonia}
+
+  XK:
+    name: Kosovo
+    aliases: [kosovo, republic of kosovo]
+    parent: europe
+    values:
+      freehire-search: {country: XK}
+      linkedin-search: {location: "Pristina, Kosovo"}
+
+  MD:
+    name: Moldova
+    aliases: [moldova, moldovan, republic of moldova]
+    parent: europe
+    values:
+      freehire-search: {country: MD}
+      linkedin-search: {location: Moldova}
+
+  CY:
+    name: Cyprus
+    aliases: [cyprus, cypriot]
+    parent: europe
+    values:
+      freehire-search: {country: CY}
+      linkedin-search: {location: Cyprus}
+      jobicy-search: {location: cyprus}
+
+  MT:
+    name: Malta
+    aliases: [malta, maltese]
+    parent: europe
+    values:
+      freehire-search: {country: MT}
+      linkedin-search: {location: Malta}
+
+  LU:
+    name: Luxembourg
+    aliases: [luxembourg, luxembourger]
+    parent: europe
+    values:
+      freehire-search: {country: LU}
+      linkedin-search: {location: Luxembourg}
+
+  MC:
+    name: Monaco
+    aliases: [monaco, monaco principality]
+    parent: europe
+    values:
+      freehire-search: {country: MC}
+      linkedin-search: {location: Monaco}
+
+  AD:
+    name: Andorra
+    aliases: [andorra, andorra la vella]
+    parent: europe
+    values:
+      freehire-search: {country: AD}
+      linkedin-search: {location: "Andorra la Vella, Andorra"}
+
+  SM:
+    name: San Marino
+    aliases: [san marino, republic of san marino]
+    parent: europe
+    values:
+      freehire-search: {country: SM}
+      linkedin-search: {location: "San Marino, San Marino"}
+
+  LI:
+    name: Liechtenstein
+    aliases: [liechtenstein, principality of liechtenstein]
+    parent: europe
+    values:
+      freehire-search: {country: LI}
+      linkedin-search: {location: Liechtenstein}
+
+  AM:
+    name: Armenia
+    aliases: [armenia, armenian]
+    parent: apac
+    values:
+      freehire-search: {country: AM}
+      linkedin-search: {location: "Yerevan, Armenia"}
+
+  GE:
+    name: Georgia
+    aliases: [georgia, georgian country]
+    parent: apac
+    values:
+      freehire-search: {country: GE}
+      linkedin-search: {location: "Tbilisi, Georgia"}
+
+  # --- Commonwealth of Independent States --------------------------------
+
+  RU:
+    name: Russia
+    aliases: [russia, russian, russian federation]
+    parent: cis
+    values:
+      freehire-search: {country: RU}
+      linkedin-search: {location: Russia}
+
+  BY:
+    name: Belarus
+    aliases: [belarus, belarusian, byelorussia]
+    parent: cis
+    values:
+      freehire-search: {country: BY}
+      linkedin-search: {location: Belarus}
+
+  KZ:
+    name: Kazakhstan
+    aliases: [kazakhstan, kazakh]
+    parent: cis
+    values:
+      freehire-search: {country: KZ}
+      linkedin-search: {location: Kazakhstan}
+
+  UZ:
+    name: Uzbekistan
+    aliases: [uzbekistan, uzbek]
+    parent: cis
+    values:
+      freehire-search: {country: UZ}
+      linkedin-search: {location: Uzbekistan}
+
+  KG:
+    name: Kyrgyzstan
+    aliases: [kyrgyzstan, kirghizstan]
+    parent: cis
+    values:
+      freehire-search: {country: KG}
+      linkedin-search: {location: Kyrgyzstan}
+
+  TJ:
+    name: Tajikistan
+    aliases: [tajikistan]
+    parent: cis
+    values:
+      freehire-search: {country: TJ}
+      linkedin-search: {location: Tajikistan}
+
+  TM:
+    name: Turkmenistan
+    aliases: [turkmenistan]
+    parent: cis
+    values:
+      freehire-search: {country: TM}
+      linkedin-search: {location: Turkmenistan}
+
+  # --- North America -----------------------------------------------------
+
+  US:
+    name: United States
+    aliases: [united states, usa, us, united states of america, america]
+    parent: north_america
+    values:
+      freehire-search: {country: US}
+      linkedin-search: {location: United States}
+      jobicy-search: {location: usa}
+
+  CA:
+    name: Canada
+    aliases: [canada, canadian]
+    parent: north_america
+    values:
+      freehire-search: {country: CA}
+      linkedin-search: {location: Canada}
+      jobicy-search: {location: canada}
+
+  # --- Latin America -----------------------------------------------------
+
+  MX:
+    name: Mexico
+    aliases: [mexico, mexican]
+    parent: latam
+    values:
+      freehire-search: {country: MX}
+      linkedin-search: {location: Mexico}
+      jobicy-search: {location: mexico}
+
+  BR:
+    name: Brazil
+    aliases: [brazil, brazilian, brasil]
+    parent: latam
+    values:
+      freehire-search: {country: BR}
+      linkedin-search: {location: Brazil}
+      jobicy-search: {location: brazil}
+
+  AR:
+    name: Argentina
+    aliases: [argentina, argentine]
+    parent: latam
+    values:
+      freehire-search: {country: AR}
+      linkedin-search: {location: Argentina}
+      jobicy-search: {location: argentina}
+
+  CL:
+    name: Chile
+    aliases: [chile, chilean]
+    parent: latam
+    values:
+      freehire-search: {country: CL}
+      linkedin-search: {location: Chile}
+
+  CO:
+    name: Colombia
+    aliases: [colombia, colombian]
+    parent: latam
+    values:
+      freehire-search: {country: CO}
+      linkedin-search: {location: Colombia}
+
+  PE:
+    name: Peru
+    aliases: [peru, peruvian]
+    parent: latam
+    values:
+      freehire-search: {country: PE}
+      linkedin-search: {location: Peru}
+
+  UY:
+    name: Uruguay
+    aliases: [uruguay, Uruguayan]
+    parent: latam
+    values:
+      freehire-search: {country: UY}
+      linkedin-search: {location: Uruguay}
+
+  EC:
+    name: Ecuador
+    aliases: [ecuador, ecuadorian]
+    parent: latam
+    values:
+      freehire-search: {country: EC}
+      linkedin-search: {location: Ecuador}
+
+  BO:
+    name: Bolivia
+    aliases: [bolivia, bolivian]
+    parent: latam
+    values:
+      freehire-search: {country: BO}
+      linkedin-search: {location: Bolivia}
+
+  PY:
+    name: Paraguay
+    aliases: [paraguay, paraguayan]
+    parent: latam
+    values:
+      freehire-search: {country: PY}
+      linkedin-search: {location: Paraguay}
+
+  VE:
+    name: Venezuela
+    aliases: [venezuela, venezuelan]
+    parent: latam
+    values:
+      freehire-search: {country: VE}
+      linkedin-search: {location: Venezuela}
+
+  CR:
+    name: Costa Rica
+    aliases: [costa rica, costa rican]
+    parent: latam
+    values:
+      freehire-search: {country: CR}
+      linkedin-search: {location: Costa Rica}
+      jobicy-search: {location: costa-rica}
+
+  PA:
+    name: Panama
+    aliases: [panama, panamanian]
+    parent: latam
+    values:
+      freehire-search: {country: PA}
+      linkedin-search: {location: Panama}
+
+  DO:
+    name: Dominican Republic
+    aliases: [dominican republic, dominican]
+    parent: latam
+    values:
+      freehire-search: {country: DO}
+      linkedin-search: {location: Dominican Republic}
+
+  GT:
+    name: Guatemala
+    aliases: [guatemala, guatemalan]
+    parent: latam
+    values:
+      freehire-search: {country: GT}
+      linkedin-search: {location: Guatemala}
+
+  HN:
+    name: Honduras
+    aliases: [honduras, honduran]
+    parent: latam
+    values:
+      freehire-search: {country: HN}
+      linkedin-search: {location: Honduras}
+
+  NI:
+    name: Nicaragua
+    aliases: [nicaragua, nicaraguan]
+    parent: latam
+    values:
+      freehire-search: {country: NI}
+      linkedin-search: {location: Nicaragua}
+
+  SV:
+    name: El Salvador
+    aliases: [el salvador, salvadoran]
+    parent: latam
+    values:
+      freehire-search: {country: SV}
+      linkedin-search: {location: El Salvador}
+
+  JM:
+    name: Jamaica
+    aliases: [jamaica, jamaican]
+    parent: latam
+    values:
+      freehire-search: {country: JM}
+      linkedin-search: {location: Jamaica}
+
+  PR:
+    name: Puerto Rico
+    aliases: [puerto rico, puerto rican]
+    parent: latam
+    values:
+      freehire-search: {country: PR}
+      linkedin-search: {location: Puerto Rico}
+
+  BS:
+    name: Bahamas
+    aliases: [bahamas, bahamian, the bahamas]
+    parent: latam
+    values:
+      freehire-search: {country: BS}
+      linkedin-search: {location: Bahamas}
+
+  # --- Asia-Pacific ------------------------------------------------------
+
+  IN:
+    name: India
+    aliases: [india, indian, bharat]
+    parent: apac
+    values:
+      freehire-search: {country: IN}
+      linkedin-search: {location: India}
+
+  PK:
+    name: Pakistan
+    aliases: [pakistan, pakistani]
+    parent: apac
+    values:
+      freehire-search: {country: PK}
+      linkedin-search: {location: Pakistan}
+
+  BD:
+    name: Bangladesh
+    aliases: [bangladesh, bangladeshi]
+    parent: apac
+    values:
+      freehire-search: {country: BD}
+      linkedin-search: {location: Bangladesh}
+
+  LK:
+    name: Sri Lanka
+    aliases: [sri lanka, sri lankan]
+    parent: apac
+    values:
+      freehire-search: {country: LK}
+      linkedin-search: {location: Sri Lanka}
+
+  NP:
+    name: Nepal
+    aliases: [nepal, nepali]
+    parent: apac
+    values:
+      freehire-search: {country: NP}
+      linkedin-search: {location: Nepal}
+
+  CN:
+    name: China
+    aliases: [china, chinese, peoples republic of china]
+    parent: apac
+    values:
+      freehire-search: {country: CN}
+      linkedin-search: {location: China}
+      jobicy-search: {location: china}
+
+  HK:
+    name: Hong Kong
+    aliases: [hong kong, hong kong sar]
+    parent: apac
+    values:
+      freehire-search: {country: HK}
+      linkedin-search: {location: Hong Kong SAR}
+      jobicy-search: {location: hong-kong}
+
+  JP:
+    name: Japan
+    aliases: [japan, japanese, nippon]
+    parent: apac
+    values:
+      freehire-search: {country: JP}
+      linkedin-search: {location: Japan}
+      jobicy-search: {location: japan}
+
+  KR:
+    name: South Korea
+    aliases: [south korea, korea, republic of korea, korean]
+    parent: apac
+    values:
+      freehire-search: {country: KR}
+      linkedin-search: {location: South Korea}
+      jobicy-search: {location: south-korea}
+
+  TW:
+    name: Taiwan
+    aliases: [taiwan, taiwanese, chinese taipei]
+    parent: apac
+    values:
+      freehire-search: {country: TW}
+      linkedin-search: {location: Taiwan}
+
+  SG:
+    name: Singapore
+    aliases: [singapore, singaporean]
+    parent: apac
+    values:
+      freehire-search: {country: SG}
+      linkedin-search: {location: Singapore}
+      jobicy-search: {location: singapore}
+
+  MY:
+    name: Malaysia
+    aliases: [malaysia, malaysian]
+    parent: apac
+    values:
+      freehire-search: {country: MY}
+      linkedin-search: {location: Malaysia}
+      jobicy-search: {location: malaysia}
+
+  ID:
+    name: Indonesia
+    aliases: [indonesia, indonesian]
+    parent: apac
+    values:
+      freehire-search: {country: ID}
+      linkedin-search: {location: Indonesia}
+
+  PH:
+    name: Philippines
+    aliases: [philippines, filipino, the philippines]
+    parent: apac
+    values:
+      freehire-search: {country: PH}
+      linkedin-search: {location: Philippines}
+      jobicy-search: {location: philippines}
+
+  VN:
+    name: Vietnam
+    aliases: [vietnam, vietnamese, viet nam]
+    parent: apac
+    values:
+      freehire-search: {country: VN}
+      linkedin-search: {location: Vietnam}
+      jobicy-search: {location: vietnam}
+
+  TH:
+    name: Thailand
+    aliases: [thailand, thai]
+    parent: apac
+    values:
+      freehire-search: {country: TH}
+      linkedin-search: {location: Thailand}
+      jobicy-search: {location: thailand}
+
+  KH:
+    name: Cambodia
+    aliases: [cambodia, khmer]
+    parent: apac
+    values:
+      freehire-search: {country: KH}
+      linkedin-search: {location: Cambodia}
+
+  LA:
+    name: Laos
+    aliases: [laos, lao, lao peoples democratic republic]
+    parent: apac
+    values:
+      freehire-search: {country: LA}
+      linkedin-search: {location: Laos}
+
+  MM:
+    name: Myanmar
+    aliases: [myanmar, burma, myanmarese]
+    parent: apac
+    values:
+      freehire-search: {country: MM}
+      linkedin-search: {location: Myanmar}
+
+  MN:
+    name: Mongolia
+    aliases: [mongolia, mongolian]
+    parent: apac
+    values:
+      freehire-search: {country: MN}
+      linkedin-search: {location: Mongolia}
+
+  AZ:
+    name: Azerbaijan
+    aliases: [azerbaijan, azeri]
+    parent: apac
+    values:
+      freehire-search: {country: AZ}
+      linkedin-search: {location: Azerbaijan}
+
+  AU:
+    name: Australia
+    aliases: [australia, australian]
+    parent: apac
+    values:
+      freehire-search: {country: AU}
+      linkedin-search: {location: Australia}
+      jobicy-search: {location: australia}
+
+  NZ:
+    name: New Zealand
+    aliases: [new zealand, new zealander, nz]
+    parent: apac
+    values:
+      freehire-search: {country: NZ}
+      linkedin-search: {location: New Zealand}
+      jobicy-search: {location: new-zealand}

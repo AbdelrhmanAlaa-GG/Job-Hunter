@@ -1,0 +1,149 @@
+# Job Hunter - example user inputs.
+#
+# Copy this file to profiles/inputs.yaml and fill it in:
+#
+#     mkdir -p profiles
+#     cp config/profiles.example/inputs.example.yaml profiles/inputs.yaml
+#
+# This file is YOURS to edit. Nothing in the system overwrites it. The
+# generated profile (profiles/<persona>/PROFILE.md) embeds a copy of these
+# inputs, so you always see them, but the editable bytes live here.
+#
+# Resume-derived facts (your skills, education, projects) live in
+# profiles/<persona>/profile.yaml and are rebuilt from your resumes.
+
+schema_version: 1
+
+identity:
+  name: Your Name
+  email: you@example.com
+  phone: "+00 000 000 0000"
+  location: Your City, Your Country
+  links:
+    github: github.com/your-handle
+
+preferences:
+  seniority:
+    include:
+      - junior
+      - "entry level"
+      - graduate
+      - "fresh graduate"
+      - associate
+      - "0-1 years"
+      - fresher
+      - "new grad"
+      - "early career"
+      - trainee
+    exclude:
+      - senior
+      - "senior level"
+      - staff
+      - principal
+      - lead
+      - "tech lead"
+      - manager
+      - director
+      - "3+ years"
+      - "5+ years"
+
+  # Each entry becomes a set of portal searches.
+  #
+  # `place` is a place the tool knows. It can be a country ("Egypt",
+  # "Germany"), a region ("MENA", "Europe", "Latin America", "APAC") or
+  # "Anywhere" for no geographic restriction. There is no city level.
+  #
+  # Run `python3 tools/places.py --list all` for the full catalogue, or
+  # `python3 tools/places.py --resolve "what you want to call it"` to check a
+  # name. A place the catalogue does not know produces no search, and the run
+  # tells you so rather than searching somewhere else.
+  #
+  # Each portal expresses a place its own way, and a portal that cannot
+  # express one searches a wider area instead. That widening is reported in
+  # the run summary - it is never silent.
+  locations:
+    # Roles based in Egypt.
+    - place: Egypt
+      mode: onsite_remote_hybrid
+      note: On-site, remote or hybrid roles based in Egypt.
+    # Remote roles open across the Arab region.
+    - place: MENA
+      mode: remote
+      remote_from_home: conditional
+      note: Remote roles that explicitly allow working from your country.
+    # Remote roles open across Europe.
+    - place: Europe
+      mode: remote
+      remote_from_home: conditional
+      note: Remote roles in Europe, for a candidate who can work from home.
+    # Remote roles in the United States.
+    - place: United States
+      mode: remote
+      requires_sponsorship: true
+      note: Remote roles open to candidates outside the US.
+    # A second entry for the same place with a different mode is allowed -
+    # for instance MENA remote, and MENA on-site with relocation support.
+    # Each entry is its own set of searches.
+
+  work_authorization: >-
+    Describe your status and what an employer would need to do to hire you
+    where you do not already have the right to work. A role that is silent
+    about sponsorship is treated as unverified, not as open.
+
+dealbreakers:
+  - Citizenship or permanent residency required with no sponsorship mentioned.
+  - A language requirement you have not declared.
+  - Senior, staff, principal or lead roles.
+
+filters:
+  # Phrases that mean the role is closed to you. Matched against the posting.
+  visa_block:
+    - "must be a U.S. citizen"
+    - "U.S. citizen only"
+    - "green card holder only"
+    - "permanent resident only"
+    - "no sponsorship"
+    - "unable to sponsor"
+    - "security clearance required"
+
+  location_block:
+    - "on-site only"
+    - "onsite only"
+    - "must relocate"
+
+search:
+  recency_days: 14
+  limit_per_query: 20
+
+  # Which portal skills to search. A portal runs only when it is enabled here
+  # AND its own SKILL.md does not set `enabled: false`.
+  portals:
+    linkedin-search:
+      enabled: true
+    freehire-search:
+      enabled: true
+    jobicy-search:
+      enabled: true
+
+  # Site-scoped searches for boards that have no CLI skill. {q} is replaced
+  # with each generated query.
+  site_queries:
+    - "site:dice.com {q} remote"
+    - "site:wellfound.com {q}"
+    - "site:otta.co {q}"
+    - "site:naukrigulf.com {q}"
+    - "site:bayt.com {q}"
+    - "site:weworkremotely.com {q}"
+
+  # Optional: write explicit portal targets here to override the derived ones.
+  # Each target becomes one CLI invocation per query. The flags are the
+  # portal's own - check its SKILL.md, or config/portals.yaml for the matrix.
+  #   targets:
+  #     - portal: freehire-search
+  #       label: "US remote"
+  #       flags: {country: US, seniority: junior, category: ml_ai,
+  #               remote: remote, jobage: "14", limit: "20"}
+  targets: []
+
+# Free-form notes. These are yours; the system never rewrites them.
+notes: ""

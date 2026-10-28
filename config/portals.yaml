@@ -1,0 +1,134 @@
+# What each portal can filter on, and the exact flag it uses.
+#
+# Every flag below was read out of that portal's own `search --help`, and every
+# vocabulary was checked against the live API. A portal CLI rejects an unknown
+# flag, so this file must not invent one. A filter marked `supported: false` is
+# one the portal documents but does not honour - sending it changes nothing and
+# hides a real gap, so it must never be sent.
+#
+# `config/places.yaml` holds the geography. This file holds the mechanism.
+
+version: 1
+
+portals:
+
+  freehire-search:
+    cli: .agents/skills/freehire-search/cli/src/cli.ts
+    runner: bun
+    api: https://freehire.me/api/v1/jobs/search
+    upstream: ai-job-search
+    terms: Public API. No key, no account.
+    carries_description: true
+    # The canonical filter name that carries each kind of geography.
+    geography:
+      country: country
+      region: region
+    # The canonical job category, and how this portal spells it.
+    category_filter: category
+    category_aliases:
+      ai_ml: ml_ai
+    filters:
+      query:
+        flag: -q
+        supported: true
+      region:
+        flag: --region
+        supported: true
+        values: [global, north_america, latam, eu, uk, mena, africa, apac, cis, none]
+        comma_or: true
+      country:
+        flag: --country
+        supported: true
+      city:
+        flag: --city
+        supported: false
+        note: >-
+          The API accepts the parameter and ignores it. A city search returns
+          the whole country. Never send a city.
+      seniority:
+        flag: --seniority
+        supported: true
+        values: [junior, middle, senior, staff, principal, lead]
+      category:
+        flag: --category
+        supported: true
+      remote:
+        flag: --remote
+        supported: true
+        values: [remote, hybrid, onsite]
+        comma_or: true
+      jobage:
+        flag: --jobage
+        supported: true
+      limit:
+        flag: --limit
+        supported: true
+
+  linkedin-search:
+    cli: .agents/skills/linkedin-search/cli/src/cli.ts
+    runner: bun
+    api: https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search
+    upstream: ai-job-search
+    terms: >-
+      Public job board. Personal use only. Automated access is against
+      LinkedIn's Terms of Service; keep the volume low.
+    carries_description: false
+    # One flag carries both countries and regions.
+    geography:
+      country: location
+      region: location
+    filters:
+      query:
+        flag: --query
+        supported: true
+      location:
+        flag: --location
+        supported: true
+      remote:
+        flag: --remote
+        supported: true
+        values: [remote, hybrid, onsite]
+        comma_or: false
+      jobage:
+        flag: --jobage
+        supported: true
+        values: [1, 7, 14, 30]
+      limit:
+        flag: --limit
+        supported: true
+
+  jobicy-search:
+    cli: .agents/skills/jobicy-search/cli/src/cli.ts
+    runner: bun
+    api: https://jobicy.com/api/jobs
+    upstream: job-hunter
+    terms: >-
+      Public Jobs API, no key. Free for commercial use provided listings are
+      credited to Jobicy and link back to their Jobicy URL.
+    carries_description: true
+    geography:
+      country: location
+      region: location
+    # Jobicy calls its category filter "industry".
+    category_filter: industry
+    category_aliases:
+      ai_ml: data-science
+    filters:
+      query:
+        flag: --query
+        supported: true
+      location:
+        flag: --location
+        supported: true
+      industry:
+        flag: --industry
+        supported: true
+      jobage:
+        flag: --jobage
+        supported: true
+        note: >-
+          Filtered client-side. The feed retains seven days, so a wider window
+          cannot be honoured.
+      limit:
+        flag: --limit
+        supported: true

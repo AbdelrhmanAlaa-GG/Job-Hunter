@@ -1,0 +1,113 @@
+# ---------------------------------------------------------------------------
+# Job Hunter - ignore rules
+#
+# Four lifecycle classes live in this repo:
+#   INPUT      resumes/  profiles/     (yours, may contain PII - never commit)
+#   OUTPUT     reports/                (generated - never commit)
+#   TOOLING    .agents/ .opencode/ tools/
+#   SCAFFOLD   templates/ config/ docs/
+#
+# Everything under INPUT and OUTPUT is ignored wholesale. The PII-free
+# starting points a new user needs live in templates/ and config/.
+# ---------------------------------------------------------------------------
+
+# --- Dependencies -----------------------------------------------------------
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Lockfiles ARE committed (see the negations at the bottom) so a fresh clone
+# installs byte-identical portal dependencies via `bun install --frozen-lockfile`.
+
+# --- USER INPUT (PII) --------------------------------------------------------
+# Every resume the user supplies, in any format, plus the extracted-text cache.
+# The directory itself is NOT excluded (only its contents), so the tracked
+# resumes/README.md can be re-included below - git cannot re-include a file
+# whose parent directory is excluded.
+/resumes/*
+!/resumes/README.md
+# The generated profile, the per-persona YAML, the user's editable inputs and
+# all per-profile job state. The directory itself is NOT excluded (only its
+# contents), so the tracked profiles/README.md can be re-included below - git
+# cannot re-include a file whose parent directory is excluded. A fresh clone
+# therefore has the directory, and the documented first step works.
+/profiles/*
+!/profiles/README.md
+
+# --- GENERATED OUTPUT --------------------------------------------------------
+/reports/
+/tmp_searches/
+/salary_data.json
+
+# --- PER-PROFILE STATE -------------------------------------------------------
+# Belt-and-braces: the two rules above already cover profiles/, but state files
+# are also ignored by name so a future layout change cannot leak them.
+**/state/seen_jobs.json
+**/state/tracker.csv
+**/state/search-queries.md
+**/state/scratch/
+**/company_research/*.json
+
+# --- Secrets -----------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- Binary / personal media -------------------------------------------------
+# Resumes are commonly PDF or DOCX; the DOCX case is covered by /resumes/ but
+# the pattern stays for safety.
+*.pdf
+*.docx
+*.jpg
+*.jpeg
+*.png
+
+# --- OS / editor -------------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.Zone.Identifier
+.vscode/
+.idea/
+
+# --- Claude Code leftovers ----------------------------------------------------
+.claude/projects/
+.claude/settings.local.json
+
+# --- Legacy layout (pre-migration) --------------------------------------------
+# These paths only exist until the P1 restructure completes; the rules are
+# removed in that same change. They exist now so the baseline commit can never
+# capture PII from the old layout.
+
+# ---------------------------------------------------------------------------
+# MUST be committed - explicit negations so a future broad rule cannot hide
+# the parts of the project other people need.
+# ---------------------------------------------------------------------------
+!.agents/
+!.agents/skills/
+!.agents/skills/*/SKILL.md
+!.agents/skills/*/url-reference.md
+!.agents/skills/*/cli/
+!.agents/skills/*/cli/src/
+!.agents/skills/*/cli/tests/
+!.agents/skills/*/cli/package.json
+!.agents/skills/*/cli/tsconfig.json
+!.agents/skills/*/cli/README.md
+
+!.opencode/
+!.opencode/commands/
+!.opencode/agents/
+!.opencode/skill/
+
+!tools/
+!templates/
+!config/
+!docs/
+!resumes/README.md
+!profiles/README.md
+
+# The workspace lockfile is committed so a fresh clone installs byte-identical
+# dependencies with `bun install --frozen-lockfile`.
+!bun.lock

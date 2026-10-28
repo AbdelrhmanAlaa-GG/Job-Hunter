@@ -1,0 +1,36 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "experimental": {
+    "subagent_depth": 2
+  },
+  "permission": {
+    "bash": {
+      "*": "ask",
+      "bun *": "allow",
+      "bun --version": "allow",
+      "python *": "allow",
+      "python3 *": "allow"
+    },
+    "edit": {
+      "*": "ask"
+    },
+    "write": {
+      "*": "ask"
+    },
+    "read": {
+      "*": "allow",
+      "*.env": "ask",
+      "*.env.*": "ask",
+      "*.env.example": "allow"
+    },
+    "webfetch": "ask",
+    "websearch": "ask",
+    "skill": {
+      "*": "allow"
+    },
+    "task": {
+      "*": "ask",
+      "posting-scorer": "allow"
+    }
+  }
+}
