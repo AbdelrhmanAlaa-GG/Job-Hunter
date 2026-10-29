@@ -34,6 +34,9 @@ The calling agent gives you, inline:
 - the persona's target roles
 - the seniority band to apply
 - the location preferences and the visa-block phrases
+- **`home_place`** - where the candidate lives
+- **`servable_places`** - the places the candidate can serve, each with the
+  countries it covers and the conditions attached to it
 - the evidence bullets you may quote
 
 Do not go and re-read the profile files. Everything you need is in the prompt.
@@ -72,13 +75,31 @@ For each job:
 
 4. **Apply the gates before scoring.**
 
-   **Location gate** - read the posting's own location and remote wording:
+   **Location gate** - read the posting's own location and remote wording, and
+   judge it against `home_place` and `servable_places`. Those two are the
+   facts; the posting's wording is the evidence. Do not work out the
+   geography yourself and do not second-guess the lists.
 
    | The posting says | Verdict |
    |---|---|
-   | Remote, or remote within a region the candidate can serve | `PASS` |
-   | On-site somewhere the candidate cannot be or cannot relocate to | `FAIL` |
+   | Remote, or remote within a place in `servable_places` | `PASS` |
+   | On-site in `home_place` - the place the candidate already lives in | `PASS` |
+   | On-site in a place in `servable_places` that the candidate can reach, or that the posting says it will sponsor, relocate or cover | `PASS` |
+   | On-site somewhere the candidate cannot be and cannot relocate to | `FAIL` |
    | Possible but costly - heavy travel, or on-site in a country with no relocation route | `FLAG` |
+
+   **The home place is never a location failure.** If a posting is on-site in
+   the country the candidate lives in, that is a role they can take. Do not
+   `FAIL` it for being on-site, and do not `FAIL` it for being in their own
+   city. `FAIL` a home-place posting only when the posting itself asks for
+   something else - relocation to another city, a work permit the candidate
+   does not have, a language they do not speak.
+
+   **A place not in `servable_places` is not automatically a failure.** Read
+   what the posting says about sponsorship, relocation and remote-from-home
+   before deciding. A posting that says it will sponsor is `PASS`; a posting
+   that says nothing about sponsorship is `FLAG`, not `FAIL` - silence is not
+   a refusal.
 
    **Language gate** - read the language required *for the role*, not the
    language the ad is written in:
@@ -115,6 +136,7 @@ A JSON array, one object per job, and nothing else:
   "fetch_error": "<one short line, only when unreachable>",
   "scores": {"technical": 0, "experience": 0, "behavioral": 0, "career": 0},
   "location_verdict": "PASS | FAIL | FLAG",
+  "location_note": "<the requirement and the reason, when not PASS>",
   "language_gate": "PASS | FAIL | FLAG",
   "language_note": "<the requirement and the candidate's level, when not PASS>",
   "deadline": "YYYY-MM-DD or null",

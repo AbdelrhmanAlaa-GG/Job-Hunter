@@ -28,6 +28,7 @@ from paths import (  # noqa: E402
     persona_yaml,
     profile_inputs_path,
 )
+from location_gate import home_place, location_entries, servable_places  # noqa: E402
 from places import load_catalogue  # noqa: E402
 from portal_map import build_targets, load_portals  # noqa: E402
 
@@ -274,10 +275,12 @@ def build_portal_targets(inputs: dict, persona: dict) -> dict:
     search = inputs.get("search", {}) or {}
     explicit = search.get("targets")
     if isinstance(explicit, list) and explicit:
+        _entries, defaulted = location_entries(inputs)
         return {
             "targets": [target for target in explicit if isinstance(target, dict)],
             "skipped": [],
             "unresolved": [],
+            "locations_defaulted": defaulted,
         }
 
     portal_settings = search.get("portals") or {}
@@ -287,16 +290,18 @@ def build_portal_targets(inputs: dict, persona: dict) -> dict:
     if not isinstance(portal_settings, dict):
         portal_settings = {}
 
-    enabled = [
-        name
-        for name, settings in portal_settings.items()
-        if not isinstance(settings, dict) or settings.get("enabled") is not False
-    ]
+    enabled = None
+    if portal_settings:
+        enabled = [
+            name
+            for name, settings in portal_settings.items()
+            if not isinstance(settings, dict) or settings.get("enabled") is not False
+        ]
 
     recency = int(search.get("recency_days", 14) or 14)
     limit = int(search.get("limit_per_query", 20) or 20)
     preferences = inputs.get("preferences", {}) or {}
-    locations = preferences.get("locations", []) or []
+    locations, locations_defaulted = location_entries(inputs)
 
     catalogue = load_catalogue()
     portals = load_portals()
@@ -360,27 +365,54 @@ def build_portal_targets(inputs: dict, persona: dict) -> dict:
             payload["place"] = place.key
             skipped.append(payload)
 
-    return {"targets": targets, "skipped": skipped, "unresolved": unresolved}
+    return {
+        "targets": targets,
+        "skipped": skipped,
+        "unresolved": unresolved,
+        "locations_defaulted": locations_defaulted,
+    }
 
 
 def build_filters(inputs: dict, persona: dict) -> dict:
-    """Build the ranking filters from the user's inputs and the persona."""
+    """Build the ranking filters from the user's inputs and the persona.
+
+    The location block carries two things the scorer needs and cannot work
+    out for itself:
+
+    ``home_place``
+        Where the candidate lives. On-site work there is never a location
+        failure.
+
+    ``servable_places``
+        The places the candidate can serve, with their conditions and the
+        countries each one covers.
+    """
     preferences = inputs.get("preferences", {}) or {}
     seniority = preferences.get("seniority", {}) or {}
     filters_block = inputs.get("filters", {}) or {}
 
+    catalogue = load_catalogue()
+    entries, locations_defaulted = location_entries(inputs)
+
     locations = []
-    for entry in preferences.get("locations", []) or []:
-        if not isinstance(entry, dict):
-            continue
+    for entry in entries:
         # `allowed_from_egypt` was the old name of this key. It named one
         # candidate's home country; the key now says what it actually means.
         remote_from_home = entry.get("remote_from_home")
         if remote_from_home is None:
             remote_from_home = entry.get("allowed_from_egypt")
+
+        name = str(entry.get("place") or entry.get("region") or "").strip()
+        resolution = catalogue.resolve(name) if name else None
+        place = resolution.place if resolution is not None and resolution.resolved else None
+
         locations.append(
             {
-                "place": entry.get("place") or entry.get("region", ""),
+                "place": name,
+                "place_key": place.key if place else "",
+                "place_name": place.name if place else "",
+                "kind": place.kind if place else "",
+                "countries": catalogue.countries_under(place.key) if place else [],
                 "mode": entry.get("mode", ""),
                 "requires_sponsorship": bool(entry.get("requires_sponsorship")),
                 "allows_relocation": bool(entry.get("allows_relocation")),
@@ -388,6 +420,8 @@ def build_filters(inputs: dict, persona: dict) -> dict:
                 "note": entry.get("note", ""),
             }
         )
+
+    home = home_place(inputs, persona, catalogue)
 
     return {
         "seniority": {
@@ -397,6 +431,9 @@ def build_filters(inputs: dict, persona: dict) -> dict:
         "visa_block": [str(token) for token in filters_block.get("visa_block", []) or []],
         "location_block": [str(token) for token in filters_block.get("location_block", []) or []],
         "locations": locations,
+        "locations_defaulted": locations_defaulted,
+        "home_place": home,
+        "servable_places": servable_places(inputs, persona, catalogue),
         "dealbreakers": [str(item) for item in inputs.get("dealbreakers", []) or []],
         "persona_exclusions": [
             str(entry.get("reason", ""))
@@ -436,6 +473,7 @@ def build_contract(persona: dict, inputs: dict) -> dict:
         "portal_targets": portal_targets["targets"],
         "portal_skipped": portal_targets["skipped"],
         "locations_unresolved": portal_targets["unresolved"],
+        "locations_defaulted": portal_targets.get("locations_defaulted", False),
         "filters": build_filters(inputs, persona),
         "search": {
             "recency_days": int((inputs.get("search", {}) or {}).get("recency_days", 14) or 14),
@@ -498,8 +536,16 @@ def render_markdown(contract: dict) -> str:
     lines.append(f"- **Seniority include:** {', '.join(seniority.get('include', []))}")
     lines.append(f"- **Seniority exclude:** {', '.join(seniority.get('exclude', []))}")
     lines.append(f"- **Visa block:** {', '.join(filters.get('visa_block', []))}")
+    home = filters.get("home_place") or {}
+    lines.append(f"- **Home place:** {home.get('name', 'not stated')}"
+                 + (f" ({home.get('city')})" if home.get("city") else "")
+                 + " - on-site work there is never a location failure")
     lines.append("")
     lines.append("## Locations")
+    if filters.get("locations_defaulted"):
+        lines.append(
+            "- **No location was given, so the search is remote roles anywhere.**"
+        )
     for entry in filters.get("locations", []):
         flags = []
         if entry.get("requires_sponsorship"):
@@ -509,7 +555,8 @@ def render_markdown(contract: dict) -> str:
         if entry.get("remote_from_home"):
             flags.append(f"remote from home: {entry['remote_from_home']}")
         suffix = f" ({', '.join(flags)})" if flags else ""
-        lines.append(f"- **{entry['place']}** - {entry['mode']}{suffix}")
+        name = entry.get("place_name") or entry.get("place")
+        lines.append(f"- **{name}** - {entry.get('mode') or 'any work mode'}{suffix}")
     return "\n".join(lines) + "\n"
 
 

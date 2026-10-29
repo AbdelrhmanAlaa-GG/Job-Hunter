@@ -56,6 +56,8 @@ profiles/<persona>/
 | `tools/profile_query.py` | The search contract: queries, portal targets, filters |
 | `tools/places.py` | The place catalogue, and the free-text resolver |
 | `tools/portal_map.py` | A place and a work mode become each portal's flags |
+| `tools/location_gate.py` | The home place, and the places the candidate can serve |
+| `tools/market.py` | Does a posting's own location agree with the place searched |
 | `tools/search_portals.py` | Search every portal, select, order, fetch, guard |
 | `tools/relevance.py` | Deterministic fit ordering - no model |
 | `tools/scrape_state.py` | What has been seen; what is new |

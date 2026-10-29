@@ -109,20 +109,42 @@ class LadderTests(unittest.TestCase):
 
     # -- work mode ---------------------------------------------------------
 
-    def test_a_comma_work_mode_becomes_several_searches_on_linkedin(self) -> None:
-        targets, _ = self.targets_for("EG", "onsite_remote_hybrid")
+    def test_a_single_work_mode_becomes_the_portal_filter(self) -> None:
+        targets, _ = self.targets_for("EG", "onsite")
         linkedin = [target for target in targets if target.portal == "linkedin-search"]
-        self.assertEqual(len(linkedin), 2)
-        self.assertEqual(
-            sorted(target.flags["remote"] for target in linkedin),
-            ["hybrid", "remote"],
-        )
+        self.assertEqual(len(linkedin), 1)
+        self.assertEqual(linkedin[0].flags["remote"], "onsite")
 
-    def test_a_comma_work_mode_stays_one_search_on_freehire(self) -> None:
+    def test_several_work_modes_send_no_work_mode_filter(self) -> None:
+        """"Remote, hybrid or on-site" is the absence of a filter, not one.
+
+        Sending `--remote remote,hybrid,onsite` drops every posting that
+        declares no work mode, and in a market such as Egypt that is most of
+        them.
+        """
         targets, _ = self.targets_for("EG", "onsite_remote_hybrid")
-        freehire = [target for target in targets if target.portal == "freehire-search"]
-        self.assertEqual(len(freehire), 1)
-        self.assertEqual(freehire[0].flags["remote"], "remote,hybrid")
+        for portal in ("freehire-search", "linkedin-search"):
+            made = [target for target in targets if target.portal == portal]
+            self.assertEqual(len(made), 1, f"{portal} made {len(made)} searches")
+            self.assertNotIn("remote", made[0].flags)
+            self.assertEqual(made[0].work_mode, "onsite_remote_hybrid")
+
+    def test_a_multi_work_mode_says_why_it_sent_no_filter(self) -> None:
+        targets, _ = self.targets_for("EG", "remote_or_relocation")
+        freehire = [target for target in targets if target.portal == "freehire-search"][0]
+        self.assertIn("work-mode", freehire.note)
+
+    def test_a_multi_work_mode_overrides_the_place_default(self) -> None:
+        """"Anywhere" carries a remote filter of its own; the mode wins."""
+        targets, _ = self.targets_for("anywhere", "onsite_remote_hybrid")
+        for target in targets:
+            self.assertNotIn("remote", target.flags)
+
+    def test_a_single_work_mode_overrides_the_place_default(self) -> None:
+        targets, _ = self.targets_for("anywhere", "hybrid")
+        for target in targets:
+            if target.portal == "freehire-search":
+                self.assertEqual(target.flags["remote"], "hybrid")
 
     def test_a_portal_without_a_work_mode_filter_gets_none(self) -> None:
         target = self.one("EG", "jobicy-search")

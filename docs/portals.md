@@ -166,6 +166,42 @@ python3 tools/places.py --resolve "atlantis"
 That is deliberate. A search that quietly answers a different question is
 worse than no search, because it looks like it worked.
 
+### The work mode
+
+`remote`, `hybrid` and `onsite` are sent as the portal's own work-mode
+filter. A mode that accepts **more than one** way of working -
+`onsite_remote_hybrid` or `remote_or_relocation` - is sent with **no
+work-mode filter at all**.
+
+That is not a shortcut. `--remote remote,hybrid,onsite` looks equivalent and
+is not: it drops every posting that declares no work mode, and in a market
+such as Egypt that is most of them. It also costs three searches on LinkedIn
+instead of one. The mode is reported on each target, and the target's note
+says which way it was translated.
+
+### The facets
+
+A portal's facets are ANDed. In a small market the stack can be empty:
+freehire with `--category ml_ai --seniority junior` returns nothing at all
+for Egypt, Germany, the UAE and Saudi Arabia, and plenty for the United
+States. When a search finds nothing, the tool drops a facet - the category
+first, then the seniority - and searches again. Every relaxation is reported
+in the run summary as `relaxed_searches`. A search that found nothing is not
+the same as a market that has nothing.
+
+### The market check
+
+Portals leak. freehire answers `--country EG` with postings in the UAE and
+Kazakhstan; LinkedIn answers `--location United States` with Toronto. Before
+a posting is scored, its own location string is checked against the country
+that was searched, and a posting that names a different country is dropped.
+The count is reported as `out_of_market`.
+
+Only an exact country target is checked, and only a posting that names a
+country is judged. "Cairo" names no country, so it is kept - a city is not a
+contradiction, and throwing it away would lose exactly the postings that
+matter in a small market.
+
 ## Boards without a CLI
 
 These are reached by site-scoped web search, configured under

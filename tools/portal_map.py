@@ -51,15 +51,34 @@ except ImportError:
 PORTALS_FILE = ROOT / "config" / "portals.yaml"
 
 # The work mode the user asked for, and the value each portal's `remote`
-# filter takes. LinkedIn takes one mode at a time; freehire takes a
+# filter takes. A portal that has one mode takes one mode; freehire takes a
 # comma-separated list as an OR group.
-WORK_MODES: dict[str, str] = {
+#
+# `None` means "send no work-mode filter at all". A request that accepts
+# remote, hybrid and on-site is not a filter - it is the absence of one.
+# Sending `--remote remote,hybrid,onsite` looks equivalent and is not: it
+# drops every posting that declares no work mode, and in a small market such
+# as Egypt that is most of them. It also costs three searches on LinkedIn
+# instead of one.
+WORK_MODES: dict[str, str | None] = {
     "remote": "remote",
     "hybrid": "hybrid",
     "onsite": "onsite",
-    "onsite_remote_hybrid": "remote,hybrid",
-    "remote_or_relocation": "remote,hybrid",
+    "onsite_remote_hybrid": None,
+    "remote_or_relocation": None,
 }
+
+# The modes that accept more than one way of working. They are sent with no
+# work-mode filter, and the target says so.
+MULTI_WORK_MODES = (
+    "onsite_remote_hybrid",
+    "remote_or_relocation",
+)
+
+WORK_MODE_NOTE = (
+    "No work-mode filter: the request accepts remote, hybrid and on-site, so "
+    "postings that declare no work mode are included too."
+)
 
 # The rung of the ladder a target landed on.
 SCOPE_EXACT = "exact"
@@ -79,6 +98,7 @@ class Target:
     place_key: str = ""
     place_name: str = ""
     note: str = ""
+    work_mode: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -90,6 +110,8 @@ class Target:
             "place": self.place_key,
             "place_name": self.place_name,
             "note": self.note,
+            "work_mode": self.work_mode,
+            "work_mode_filter": self.flags.get("remote", ""),
         }
 
 
@@ -180,7 +202,9 @@ def build_targets(
     targets: list[Target] = []
     skips: list[Skip] = []
 
-    work_mode = WORK_MODES.get(str(mode or "").strip().lower(), "")
+    mode_key = str(mode or "").strip().lower()
+    mode_known = mode_key in WORK_MODES
+    work_mode = WORK_MODES.get(mode_key) if mode_known else ""
 
     for portal in (portals or {}):
         if enabled is not None and portal not in enabled:
@@ -234,6 +258,7 @@ def build_targets(
                 place_key=place.key,
                 place_name=place.name,
                 note=str(value.get("note") or ""),
+                work_mode=mode_key if mode_known else "",
             )
             break
 
@@ -250,10 +275,19 @@ def build_targets(
 
         canonical = canonical_value(chosen, portals)
 
-        # The work mode, unless the place already fixed it.
-        if work_mode and "remote" not in chosen.flags:
-            if supports_filter(portals, portal, "remote"):
-                chosen.flags["remote"] = work_mode
+        # The work mode. A mode the user expressed wins over the place's own
+        # default: "Anywhere, remote" and "Anywhere, on-site or remote or
+        # hybrid" are different requests, and the second one must not keep the
+        # first one's remote filter.
+        if mode_known:
+            if work_mode:
+                if supports_filter(portals, portal, "remote"):
+                    chosen.flags["remote"] = work_mode
+            elif mode_key in MULTI_WORK_MODES:
+                # More than one way of working is not a filter. Drop the one
+                # the place carried, and say why in the target's note.
+                chosen.flags.pop("remote", None)
+                chosen.note = (chosen.note + " " + WORK_MODE_NOTE).strip()
 
         # Non-geography filters the caller supplied.
         for canonical_name, value in (extra_flags or {}).items():
@@ -313,6 +347,7 @@ def build_targets(
                     place_key=chosen.place_key,
                     place_name=chosen.place_name,
                     note=chosen.note,
+                    work_mode=chosen.work_mode,
                 )
             )
 

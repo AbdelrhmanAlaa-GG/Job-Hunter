@@ -78,7 +78,29 @@ python3 tools/places.py --resolve "<what the user said>"
 The catalogue covers 10 regions and 158 countries. See
 `python3 tools/places.py --list all`.
 
-### 4. Which work mode?
+**If the user does not name a place**, do not leave the list empty. An empty
+list means a run with no search at all. The default is remote roles anywhere:
+
+```yaml
+preferences:
+  locations:
+    - place: Anywhere
+      mode: remote
+```
+
+Tell the user that is what you have set, so they can change it.
+
+### 4. Where do they live?
+
+`identity.location` is the candidate's **home place**. It is not a search
+preference - it is the place they live in, and it decides what the location
+gate accepts: an on-site role in their own city is a role they can take, and
+it is never gated out.
+
+Ask for the city and the country, and write it as `City, Country` - the
+catalogue resolves that to the country.
+
+### 5. Which work mode?
 
 For each place, ask how they want to work there:
 
@@ -89,7 +111,12 @@ For each place, ask how they want to work there:
 | `onsite` | On-site only. |
 | `onsite_remote_hybrid` | Any of the three. |
 
-### 5. Which portals?
+A mode that accepts more than one way of working is sent with **no work-mode
+filter at all**. That is deliberate: a filter that asks for "remote, hybrid
+or on-site" still drops every posting that declares no work mode, and in
+Egypt that is most of them.
+
+### 6. Which portals?
 
 All three are enabled by default:
 
@@ -101,7 +128,7 @@ All three are enabled by default:
 
 Offer each as enabled or disabled, and explain the trade-off in one line.
 
-### 6. Any board without a CLI?
+### 7. Any board without a CLI?
 
 `search.site_queries` reaches boards that have no API, through a site-scoped
 web search. The defaults cover Dice, Wellfound, Otta, Naukrigulf, Bayt and
@@ -147,6 +174,9 @@ preferences:
       mode: remote
 ```
 
+This is also what the system falls back to when the list is left empty, and
+it says so in the run summary rather than searching nothing.
+
 ### One country only
 
 ```yaml
@@ -175,11 +205,15 @@ The `locations` entries take:
 | Key | Meaning |
 |---|---|
 | `place` | The place, as a name or a catalogue key. `region` still works. |
-| `mode` | `remote`, `hybrid`, `onsite` or `onsite_remote_hybrid` |
+| `mode` | `remote`, `hybrid`, `onsite`, `onsite_remote_hybrid` or `remote_or_relocation` |
 | `requires_sponsorship` | The role must sponsor a work permit |
 | `allows_relocation` | The employer will relocate the candidate |
 | `remote_from_home` | The role explicitly allows working from the candidate's home country. Free text - `conditional`, `yes`, `must say so`. |
 | `note` | A note for the candidate. Free text. |
+
+`identity.location` is the candidate's home place. It decides what the
+location gate accepts - a role on-site where they already live is never
+gated - and it is not a search preference.
 
 ## What to tell the user afterwards
 

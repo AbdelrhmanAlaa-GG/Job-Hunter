@@ -76,6 +76,37 @@ regions:
       - eu 27
       - europe union
     parent: emea
+    # The hierarchy cannot say this one: the members are children of "europe",
+    # not of "european_union". Listed here so "is this posting in the EU?" has
+    # an answer that is data rather than a guess.
+    countries:
+      - AT
+      - BE
+      - BG
+      - HR
+      - CY
+      - CZ
+      - DK
+      - EE
+      - FI
+      - FR
+      - DE
+      - GR
+      - HU
+      - IE
+      - IT
+      - LV
+      - LT
+      - LU
+      - MT
+      - NL
+      - PL
+      - PT
+      - RO
+      - SK
+      - SI
+      - ES
+      - SE
     values:
       freehire-search:
         region: eu

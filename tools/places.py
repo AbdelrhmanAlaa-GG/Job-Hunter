@@ -132,6 +132,10 @@ class Place:
     parent: str | None = None
     values: dict = field(default_factory=dict)
     notes: dict = field(default_factory=dict)
+    # A region may name the countries it covers when the hierarchy cannot say
+    # it. The European Union is the case that needs it: its members are
+    # children of "europe", not of "european_union".
+    countries: list[str] = field(default_factory=list)
 
     @property
     def label(self) -> str:
@@ -202,6 +206,7 @@ class Catalogue:
             parent=entry.get("parent"),
             values=entry.get("values") or {},
             notes=entry.get("notes") or {},
+            countries=[str(item) for item in entry.get("countries") or []],
         )
         self.places[key] = place
         folded_key = normalise(key)
@@ -232,6 +237,51 @@ class Catalogue:
             chain.append(parent)
             current = parent
         return chain
+
+    def children_of(self, key: str) -> list[Place]:
+        """Return the places whose parent is this one."""
+        return [place for place in self.places.values() if place.parent == key]
+
+    def countries_under(self, key: str) -> list[str]:
+        """Return the country keys a place covers.
+
+        A country covers itself. A region covers its children, and every
+        country beneath them. A region may also name its members directly,
+        for the places the hierarchy cannot express - the European Union's
+        members are children of "europe", not of "european_union".
+
+        This is what turns "MENA" into the list of countries a posting has to
+        be in to count as a MENA posting.
+        """
+        if key not in self.places:
+            return []
+        place = self.places[key]
+        if place.kind == "country":
+            return [key]
+        found: list[str] = []
+        seen: set[str] = set()
+
+        def add(candidate_key: str) -> None:
+            if candidate_key in seen:
+                return
+            candidate = self.places.get(candidate_key)
+            if candidate is None or candidate.kind != "country":
+                return
+            seen.add(candidate_key)
+            found.append(candidate_key)
+
+        def walk(current_key: str, depth: int) -> None:
+            current = self.places.get(current_key)
+            if current is None or depth > 12:
+                return
+            for code in current.countries:
+                add(code)
+            for child in self.children_of(current_key):
+                add(child.key)
+                walk(child.key, depth + 1)
+
+        walk(key, 0)
+        return sorted(found)
 
     def search(self, text: str, limit: int = 8) -> list[tuple[str, str, str]]:
         """Return catalogue entries matching a fragment of free text.

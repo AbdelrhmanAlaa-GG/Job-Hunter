@@ -44,7 +44,9 @@ It returns:
 - `portal_targets` - for each portal and region, the flags to pass.
 - `target_roles` - the roles this persona targets, in priority order.
 - `filters` - the seniority band, the visa-block phrases, the location
-  preferences and the dealbreakers.
+  preferences, the dealbreakers, `home_place` (where the candidate lives) and
+  `servable_places` (the places they can serve, with the countries each one
+  covers and its conditions).
 - `provenance` - the resume, the evidence bullets you may quote, the
   candidate's projects and the identity fields.
 
@@ -70,8 +72,9 @@ of keywords a recruiter would type.
 
 Dispatch `posting-scorer` subagents for the postings that need scoring, about
 five jobs per agent. Give each agent the job list and the rubric inline - the
-skills, the roles, the seniority band, the location preferences and the
-visa-block phrases. Do not make them re-read the profile.
+skills, the roles, the seniority band, the location preferences, the
+visa-block phrases, `home_place` and `servable_places`. Do not make them
+re-read the profile.
 
 The subagents return JSON. You aggregate it, apply the weighted score
 (technical 30%, experience 25%, behavioral 15%, career 30%) and the verdict
@@ -111,6 +114,9 @@ is worth their time.
 
 - An **Excluded** section for the vetoed jobs, each with its reason and the
   quoted requirement. The user needs to see what was filtered and why.
+- A note when the search was **widened**: a portal that searched a bigger
+  place than the one asked for, or a search that dropped a facet because the
+  strict one found nothing. Say which, and why.
 - A **Closing soon** section for deadlines within seven days.
 - A header with the persona, the resume it was built from, the portals
   searched and the counts: found, new, scored.

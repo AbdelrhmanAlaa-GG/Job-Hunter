@@ -158,12 +158,29 @@ you so.** It never quietly searches somewhere else. Each portal expresses a
 place its own way, and a portal that cannot express one searches a wider
 area - the run summary says which, and why.
 
+**Leave the list of places empty and the search is remote roles anywhere.**
+The default is reported in the run summary, so it is never a silent one
+either.
+
 | Place | freehire | LinkedIn | Jobicy |
 |---|---|---|---|
 | Egypt | `--country EG` | `--location Egypt` | `--location emea` (wider - no Egypt slug) |
 | Germany | `--country DE` | `--location Germany` | `--location germany` |
 | MENA | `--region mena` | `--location "Middle East"` | `--location emea` (wider) |
 | Anywhere | `--region global,none --remote remote` | `--location Remote --remote remote` | `--location anywhere` |
+
+A mode that accepts more than one way of working - `onsite_remote_hybrid` or
+`remote_or_relocation` - is sent with no work-mode filter at all. A filter
+that asks for "remote, hybrid or on-site" still drops every posting that
+declares no work mode, and in Egypt that is most of them.
+
+### Where you live
+
+`identity.location` is your **home place**, and it is not a search
+preference. It is what the location gate accepts: a role on-site in the city
+you already live in is a role you can take, so it is never gated out. A
+posting in your own country that the scorer failed on location grounds is
+downgraded to `FLAG` and shown to you, rather than dropped.
 
 See `docs/portals.md` for the full table and for the places LinkedIn resolves
 to the wrong country if you write them the obvious way.

@@ -95,6 +95,15 @@ It prints a summary: `calls`, `hits`, `already_seen`, `new`, `prepared`,
 
 - **Report the `errors` list** in the report. A portal that fails is skipped,
   never fatal.
+- **Report `relaxed_searches`** in the report. A portal's facets are ANDed,
+  and in a small market the stack can be empty - freehire with
+  `--category ml_ai --seniority junior` returns nothing at all for Egypt. When
+  that happens the tool drops a facet and searches again, and says so. Say it
+  too: the search was wider than the filters suggest.
+- **Report `widened_searches`** - a portal that could not express a place and
+  searched a wider one instead.
+- **Report `out_of_market`** - postings a portal returned from a country
+  other than the one that was searched. They were dropped before scoring.
 - `prepared` is how many postings this run will score. `deferred` is how many
   were found but not prepared - they stay unseen, so a later run picks them
   up. Nothing is lost.
@@ -143,7 +152,12 @@ Give each subagent, inline:
 2. The scoring rubric: the persona's primary and secondary skills, the target
    roles, the seniority band, the location preferences and the visa-block
    phrases.
-3. The evidence bullets you may quote.
+3. **`filters.home_place`** and **`filters.servable_places`** from the
+   contract. These are the facts the location gate is judged against: where
+   the candidate lives, and which places they can serve, with the countries
+   each covers and its conditions (sponsorship, relocation, remote from
+   home). The scorer does not work the geography out for itself.
+4. The evidence bullets you may quote.
 
 Do not make the agents re-read the profile files, and do not fetch the postings
 again - `body_file` already holds the text.
@@ -162,6 +176,7 @@ Each agent returns a JSON array of scoring objects:
   "fetch_error": "<one short line, only when unreachable>",
   "scores": {"technical": 0-100, "experience": 0-100, "behavioral": 0-100, "career": 0-100},
   "location_verdict": "PASS | FAIL | FLAG",
+  "location_note": "<the requirement and the reason, only when FLAG or FAIL>",
   "language_gate": "PASS | FAIL | FLAG",
   "language_note": "<the requirement and your level, only when FLAG or FAIL>",
   "deadline": "YYYY-MM-DD or null",
@@ -172,11 +187,17 @@ Each agent returns a JSON array of scoring objects:
 }
 ```
 
-`location_verdict` is the location gate: `FAIL` when the posting needs the
-candidate to be somewhere they cannot be or cannot get to, `FLAG` when it is
-possible but costly (heavy travel, on-site in a country with no relocation
-route), `PASS` otherwise. The agent must read the posting's own location and
-remote wording - not guess from the title.
+`location_verdict` is the location gate, judged against `home_place` and
+`servable_places`: `FAIL` when the posting needs the candidate to be somewhere
+they cannot be or cannot get to, `FLAG` when it is possible but costly (heavy
+travel, on-site in a country with no relocation route), `PASS` otherwise. The
+agent must read the posting's own location and remote wording - not guess
+from the title.
+
+**A posting in the candidate's home place is never a location failure.** An
+on-site role in the city the candidate lives in is a role they can take, and
+`FAIL` on it is a mistake. `FAIL` a home-place posting only when the posting
+itself asks for something else - relocation, a work permit, a language.
 
 `language_gate` is `FAIL` when the posting requires a language the candidate
 has not declared at all, `FLAG` when the bar reads above the declared level,
@@ -191,8 +212,12 @@ python3 tools/rank_state.py apply --results profiles/<persona>/state/scratch/<ti
 The tool computes the weighted score (technical 30%, experience 25%,
 behavioral 15%, career 30%), maps it to a verdict band, applies the location
 and language vetoes, stores the strengths and gaps, and sets each job's status
-to `ranked`. It prints `ranked`, `vetoed`, `expired`, `unreachable` and any
-`errors`.
+to `ranked`. It prints `ranked`, `vetoed`, `expired`, `unreachable`,
+`location_overrides` and any `errors`.
+
+`location_overrides` are postings the tool moved from `FAIL` to `FLAG`
+because they are in the candidate's home place. Report them - the candidate
+should see that the tool stepped in, and why.
 
 If `errors` is non-empty, report them and do not present those jobs as scored.
 

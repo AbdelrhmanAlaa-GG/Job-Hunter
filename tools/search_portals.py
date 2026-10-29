@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import relevance  # noqa: E402
 import scrape_state  # noqa: E402
 from job_key import make_key  # noqa: E402
+from market import matches_country  # noqa: E402
 from paths import (  # noqa: E402
     ROOT,
     active_persona,
@@ -43,6 +44,7 @@ from paths import (  # noqa: E402
     seen_jobs_path,
     tracker_path,
 )
+from places import load_catalogue  # noqa: E402
 from profile_query import (  # noqa: E402
     build_contract,
     build_queries,
@@ -67,6 +69,28 @@ NEEDS_DETAIL_PORTS = {"linkedin-search"}
 # The capability matrix, read once.
 PORTALS = load_portals()
 
+# The place catalogue, read once.
+CATALOGUE = load_catalogue()
+
+# The facets that may be dropped when a search finds nothing, and in what
+# order. Dropping a facet widens the search, so it is reported and never done
+# quietly.
+#
+# The category is dropped first: it is this system's own guess at what the
+# persona's field is, and in a small market it is the difference between
+# everything and nothing. The seniority is dropped second: it is the user's
+# own preference, and the title-level judgement in this module still applies
+# it afterwards.
+RELAXATION_LADDER = {
+    "freehire-search": [
+        ("category",),
+        ("category", "seniority"),
+    ],
+    "jobicy-search": [
+        ("industry",),
+    ],
+}
+
 
 def cli_path(portal: str) -> Path:
     """Return the portal CLI's entry point."""
@@ -79,6 +103,11 @@ def build_calls(contract: dict) -> list[dict]:
     Only flags a portal actually supports are used, and the flag each one
     uses comes from ``config/portals.yaml`` - never from a table kept here,
     which is how the old code ended up sending flags no CLI had.
+
+    Each call carries the place it was made for. That is what lets a posting
+    be checked against the market it was found in, and what lets the
+    ordering know that a posting from the place the user asked for is worth
+    more than a posting from somewhere else.
     """
     calls: list[dict] = []
     for target in contract.get("portal_targets", []) or []:
@@ -106,10 +135,38 @@ def build_calls(contract: dict) -> list[dict]:
                     "label": target.get("label", ""),
                     "query": text,
                     "scope": target.get("scope", ""),
+                    "place": target.get("place", ""),
+                    "place_name": target.get("place_name", ""),
+                    "rung": target.get("rung", ""),
+                    "work_mode": target.get("work_mode", ""),
+                    "flags": dict(flags),
                     "argv": argv,
                 }
             )
     return calls
+
+
+def relaxed_call(call: dict, drop: tuple[str, ...]) -> dict | None:
+    """Return the same call with some flags removed, or None when nothing changes.
+
+    Only the flags named in the relaxation ladder may go. The geography, the
+    query and the recency stay: dropping those would answer a different
+    question.
+    """
+    flags = {key: value for key, value in (call.get("flags") or {}).items() if key not in drop}
+    if flags == call.get("flags"):
+        return None
+
+    argv = ["search"]
+    argv += flags_to_argv(PORTALS, call["portal"], flags)
+    argv += flags_to_argv(PORTALS, call["portal"], {"query": call["query"]})
+    argv += ["--format", "json"]
+
+    relaxed = dict(call)
+    relaxed["flags"] = flags
+    relaxed["argv"] = argv
+    relaxed["dropped"] = list(drop)
+    return relaxed
 
 
 def normalise(item: dict, portal: str) -> dict | None:
@@ -143,6 +200,26 @@ def normalise(item: dict, portal: str) -> dict | None:
         "source": "cli",
         "portal_id": item.get("id"),
     }
+
+
+def in_market(hit: dict, call: dict) -> bool:
+    """Whether a posting's own location agrees with the place that was searched.
+
+    Portals answer a country filter with postings from other countries. A
+    posting from the wrong market is worse than no posting, because it looks
+    like a hit - so it is dropped here, where it costs nothing, rather than
+    in the scoring step, where it costs a fetch and a model's attention.
+
+    Only an exact country target is checked, and only a posting that names a
+    country is judged. A posting that says "Cairo" and no country is kept.
+    """
+    if str(call.get("scope") or "") != "exact":
+        return True
+    place_key = str(call.get("place") or "")
+    place = CATALOGUE.get(place_key)
+    if place is None or place.kind != "country":
+        return True
+    return matches_country(str(hit.get("location") or ""), place_key, CATALOGUE)
 
 
 def run_call(call: dict) -> tuple[dict, list[dict]]:
@@ -196,15 +273,28 @@ def run_call(call: dict) -> tuple[dict, list[dict]]:
         )
 
     hits = []
+    out_of_market = 0
     for item in results:
         hit = normalise(item, call["portal"])
-        if hit:
-            hits.append(hit)
+        if not hit:
+            continue
+        hit["target_place"] = call.get("place", "")
+        hit["target_place_name"] = call.get("place_name", "")
+        hit["target_scope"] = call.get("scope", "")
+        hit["target_rung"] = call.get("rung", "")
+        if not in_market(hit, call):
+            out_of_market += 1
+            continue
+        hits.append(hit)
     log = {"portal": call["portal"], "query": call["query"], "hits": len(hits)}
+    if out_of_market:
+        log["out_of_market"] = out_of_market
     if warnings:
         log["warnings"] = warnings
     if call.get("scope") and call["scope"] != "exact":
         log["scope"] = call["scope"]
+    if call.get("dropped"):
+        log["dropped"] = list(call["dropped"])
     return log, hits
 
 
@@ -328,6 +418,117 @@ def fit_of(job: dict, terms: dict) -> str:
     return "low"
 
 
+def run_batch(calls: list[dict]) -> tuple[list[dict], list[list[dict]]]:
+    """Run a set of portal calls at once.
+
+    Returns the logs and the hits **per call**, so that a caller can match a
+    call to its own hits.
+    """
+    logs: list[dict] = []
+    hits: list[list[dict]] = []
+    if not calls:
+        return logs, hits
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        for log, found in pool.map(run_call, calls):
+            logs.append(log)
+            hits.append(found)
+    return logs, hits
+
+
+def run_with_relaxation(calls: list[dict]) -> tuple[list[dict], list[dict], list[dict]]:
+    """Run the calls, and retry the empty ones with fewer facets.
+
+    A portal's facets are ANDed, and in a small market the stack can be
+    empty: freehire with ``--category ml_ai --seniority junior`` returns
+    nothing at all for Egypt, Germany, the UAE and Saudi Arabia, and plenty
+    for the United States. A search that finds nothing is not the same as a
+    market that has nothing, so the facets are dropped one at a time until
+    something comes back.
+
+    Every relaxation is recorded. A widened search is never a silent one.
+    """
+    logs, hit_lists = run_batch(calls)
+    hits: list[dict] = [hit for group in hit_lists for hit in group]
+    relaxations: list[dict] = []
+
+    for rung in range(1, 4):
+        retries: list[tuple[int, dict, tuple[str, ...]]] = []
+        for index, call in enumerate(calls):
+            log = logs[index]
+            if log.get("error") or log.get("hits"):
+                continue
+            ladder = RELAXATION_LADDER.get(call["portal"], [])
+            if rung > len(ladder):
+                continue
+            drop = ladder[rung - 1]
+            relaxed = relaxed_call(call, drop)
+            if relaxed is None:
+                continue
+            retries.append((index, relaxed, drop))
+
+        if not retries:
+            break
+
+        retry_logs, retry_hit_lists = run_batch([item[1] for item in retries])
+        for (index, relaxed, drop), log, found in zip(retries, retry_logs, retry_hit_lists):
+            log["relaxed"] = list(drop)
+            logs[index] = log
+            relaxations.append(
+                {
+                    "portal": relaxed["portal"],
+                    "query": relaxed["query"],
+                    "place": relaxed.get("place", ""),
+                    "dropped": list(drop),
+                    "hits": len(found),
+                }
+            )
+            hits.extend(found)
+
+    return logs, hits, relaxations
+
+
+def merge_hits(hits: list[dict]) -> list[dict]:
+    """Merge the postings that more than one search found.
+
+    A posting in Egypt comes back from the Egypt search *and* from the MENA
+    one, because MENA holds Egypt. The two copies carry different places, and
+    the tightest one is the honest one: the market check and the ordering
+    both want to know where a posting really was found.
+
+    A copy with a longer description wins over one without, so a portal that
+    carries the full text is not overwritten by one that does not.
+    """
+    merged: dict[str, dict] = {}
+    order: list[str] = []
+
+    for hit in hits:
+        key = make_key(str(hit.get("company") or ""), str(hit.get("title") or ""), str(hit.get("url") or ""))
+        current = merged.get(key)
+        if current is None:
+            merged[key] = dict(hit)
+            order.append(key)
+            continue
+
+        if _specificity(hit) > _specificity(current):
+            # Keep the tighter place, but do not lose the richer description.
+            if len(str(current.get("description") or "")) > len(str(hit.get("description") or "")):
+                hit = dict(hit, description=current.get("description"))
+            merged[key] = hit
+        elif len(str(hit.get("description") or "")) > len(str(current.get("description") or "")):
+            merged[key] = dict(current, description=hit.get("description"))
+
+    return [merged[key] for key in order]
+
+
+def _specificity(hit: dict) -> tuple:
+    """Rank two copies of the same posting by how tight their place is."""
+    scope = str(hit.get("target_scope") or "")
+    scope_rank = {"exact": 3, "wider": 2, "floor": 1}.get(scope, 0)
+    place = CATALOGUE.get(str(hit.get("target_place") or ""))
+    kind_rank = 2 if place is not None and place.kind == "country" else 1 if place is not None else 0
+    return (scope_rank, kind_rank)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--persona", help="persona slug (default: the active persona)")
@@ -365,19 +566,22 @@ def main() -> int:
                     "calls": 0,
                     "hits": 0,
                     "selected": 0,
-                    "note": "no portal produced a call - check profiles/inputs.yaml",
+                    "note": (
+                        "no portal produced a call - check preferences.locations in "
+                        "profiles/inputs.yaml"
+                    ),
+                    "locations_defaulted": contract.get("locations_defaulted", False),
+                    "skipped_targets": contract.get("portal_skipped", []) or [],
+                    "unresolved_locations": contract.get("locations_unresolved", []) or [],
                 },
                 indent=2,
             )
         )
         return 0
 
-    logs: list[dict] = []
-    hits: list[dict] = []
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        for log, found in pool.map(run_call, calls):
-            logs.append(log)
-            hits.extend(found)
+    logs, hits, relaxations = run_with_relaxation(calls)
+    raw_hits = len(hits)
+    hits = merge_hits(hits)
 
     # Drop what has already been seen.
     state_path = seen_jobs_path(persona_slug)
@@ -441,6 +645,8 @@ def main() -> int:
                 "url": merged["url"],
                 "location": merged.get("location") or "",
                 "portal": merged.get("portal") or "",
+                "target_place": merged.get("target_place") or "",
+                "target_place_name": merged.get("target_place_name") or "",
                 "posted_date": merged.get("posted_date") or None,
                 "deadline": merged.get("deadline") or None,
                 "work_mode": merged.get("work_mode"),
@@ -477,13 +683,16 @@ def main() -> int:
         for log in logs
         if log.get("scope") and log.get("scope") != "exact"
     ]
+    out_of_market = sum(int(log.get("out_of_market", 0) or 0) for log in logs)
     summary = {
         "calls": len(calls),
         "hits": len(hits),
+        "hits_raw": raw_hits,
         "already_seen": counts.get("already_seen", 0),
         "already_applied": counts.get("already_applied", 0),
         "repeated_in_batch": counts.get("repeated_in_batch", 0),
         "invalid": len(counts.get("invalid", []) or []),
+        "out_of_market": out_of_market,
         "new": len(ordered),
         "prepared": len(prepared),
         "deferred": deferred,
@@ -492,6 +701,9 @@ def main() -> int:
         "errors": errors,
         "warnings": warnings,
         "widened_searches": widened,
+        "relaxed_searches": relaxations,
+        "locations_defaulted": contract.get("locations_defaulted", False),
+        "home_place": (contract.get("filters", {}) or {}).get("home_place"),
         "skipped_targets": contract.get("portal_skipped", []) or [],
         "unresolved_locations": contract.get("locations_unresolved", []) or [],
     }

@@ -15,6 +15,13 @@ the most promising postings first.
 from __future__ import annotations
 
 import re
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from location_gate import home_place, location_entries  # noqa: E402
+from places import load_catalogue  # noqa: E402
 
 # Words that mark a posting as above the seniority this project targets.
 SENIOR_MARKERS = (
@@ -51,6 +58,34 @@ JUNIOR_MARKERS = (
 # needs. Anything shorter needs a detail fetch before it can be judged.
 DESCRIPTION_ENOUGH = 400
 
+# How much a location preference is worth. The place the candidate lives in
+# is worth more than the others: it is the one place they can take an on-site
+# job in without a visa, a sponsor or a suitcase.
+LOCATION_WEIGHTS = {
+    "country": 12.0,
+    "region": 9.0,
+    "anywhere": 2.0,
+}
+
+# The home place, where the candidate already lives.
+HOME_LOCATION_WEIGHT = 16.0
+
+# A country inside a region the user named counts for less than the region
+# itself.
+MEMBER_COUNTRY_FACTOR = 0.8
+
+# A search that had to widen to a parent region is a weaker signal than an
+# exact one, so it carries less weight.
+WIDER_SCOPE_FACTOR = 0.75
+
+# Words that say nothing about what a role is. "Applied AI Engineer" and "AI
+# Engineer" are the same job family, and a posting that uses the shorter name
+# is still a match - but a weaker one.
+GENERIC_ROLE_WORDS = {"applied", "software"}
+
+# How much a role match is worth when only the distinctive words match.
+FALLBACK_ROLE_FACTOR = 0.6
+
 
 def _tokens(text: str) -> list[str]:
     """Split a phrase into the words worth searching for in a job ad."""
@@ -71,8 +106,16 @@ def build_terms(persona: dict, inputs: dict) -> dict:
     ``persona`` is the persona's profile.yaml content and ``inputs`` is the
     user's inputs.yaml content. Both are read for hints only - no fact here
     comes from anywhere else.
+
+    The location block used to read ``region``, ``city`` and ``country`` from
+    each preference entry, and the entries are written with ``place``. Every
+    location term was therefore empty, every posting scored the same on
+    location, and the postings the user had asked for were pushed out of the
+    limit by the ones they had not. The place is resolved through the
+    catalogue now, so a region also names the countries inside it.
     """
     roles: list[tuple[str, float]] = []
+    role_fallbacks: list[tuple[set[str], float]] = []
     for role in persona.get("target_roles", []) or []:
         title = str(role.get("title", "") if isinstance(role, dict) else role)
         priority = role.get("priority", 5) if isinstance(role, dict) else 5
@@ -84,6 +127,13 @@ def build_terms(persona: dict, inputs: dict) -> dict:
         weight = max(2.0, 16.0 - float(priority))
         for phrase in _phrases(title):
             roles.append((phrase, weight))
+        distinctive = {
+            token
+            for token in _tokens(title)
+            if token not in GENERIC_ROLE_WORDS
+        }
+        if distinctive and len(distinctive) < len(_tokens(title)):
+            role_fallbacks.append((distinctive, weight * FALLBACK_ROLE_FACTOR))
 
     skills: list[tuple[str, float]] = []
     for skill in persona.get("skills", []) or []:
@@ -101,20 +151,68 @@ def build_terms(persona: dict, inputs: dict) -> dict:
                     skills.append((token, score * 0.6))
 
     locations: list[tuple[str, float]] = []
-    preferences = inputs.get("preferences", {}) or {}
-    for entry in preferences.get("locations", []) or []:
-        if not isinstance(entry, dict):
+    servable: dict[str, float] = {}
+    servable_names: dict[str, str] = {}
+
+    catalogue = load_catalogue()
+    entries, _defaulted = location_entries(inputs)
+
+    for entry in entries:
+        name = str(
+            entry.get("place")
+            or entry.get("region")
+            or entry.get("city")
+            or entry.get("country")
+            or ""
+        ).strip()
+        if not name:
             continue
-        for key in ("region", "city", "country"):
-            value = entry.get(key)
-            if value:
-                for phrase in _phrases(value):
-                    locations.append((phrase, 6.0))
+
+        resolution = catalogue.resolve(name)
+        if not resolution.resolved or resolution.place is None:
+            # A place the catalogue does not know still counts for something:
+            # it is the user's own words, and the portal may well use them.
+            for phrase in _phrases(name):
+                locations.append((phrase, 6.0))
+            continue
+
+        place = resolution.place
+        weight = LOCATION_WEIGHTS.get(place.key, LOCATION_WEIGHTS.get(place.kind, 6.0))
+        servable[place.key] = max(servable.get(place.key, 0.0), weight)
+        servable_names[place.key] = place.name
+
+        for phrase in _phrases(place.name):
+            locations.append((phrase, weight))
+
+        # A region names its countries, so a posting in one of them counts.
+        if place.kind == "region" and place.key != "anywhere":
+            for code in catalogue.countries_under(place.key):
+                member = catalogue.get(code)
+                if member is None:
+                    continue
+                for phrase in _phrases(member.name):
+                    locations.append((phrase, weight * MEMBER_COUNTRY_FACTOR))
+
+    # The place the candidate lives in is one they can serve, and it is worth
+    # more than the other places on the list: it is the one place they can
+    # take an on-site job in without a visa, a sponsor or a suitcase.
+    home = home_place(inputs, persona, catalogue)
+    if home and home.get("country"):
+        country = home["country"]
+        servable[country] = max(servable.get(country, 0.0), HOME_LOCATION_WEIGHT)
+        servable_names.setdefault(country, home.get("name") or country)
+        member = catalogue.get(country)
+        if member is not None:
+            for phrase in _phrases(member.name):
+                locations.append((phrase, HOME_LOCATION_WEIGHT))
 
     return {
         "roles": roles,
+        "role_fallbacks": role_fallbacks,
         "skills": skills,
         "locations": locations,
+        "servable": servable,
+        "servable_names": servable_names,
         "senior": SENIOR_MARKERS,
         "junior": JUNIOR_MARKERS,
     }
@@ -133,6 +231,15 @@ def score(job: dict, terms: dict) -> tuple[float, list[str]]:
             total += weight
             reasons.append(f"role '{phrase}' in the title")
             break
+    else:
+        # A posting may name the role in the shorter form. "AI Engineer" is an
+        # "Applied AI Engineer" - a weaker match, but the same job family.
+        title_tokens = set(_tokens(title))
+        for distinctive, weight in terms.get("role_fallbacks", []):
+            if distinctive and distinctive.issubset(title_tokens):
+                total += weight
+                reasons.append("the title names the target role family")
+                break
     for phrase, weight in terms.get("skills", []):
         if phrase in title:
             total += weight * 0.6
@@ -141,11 +248,34 @@ def score(job: dict, terms: dict) -> tuple[float, list[str]]:
     if any(phrase in title for phrase, _ in terms.get("skills", [])):
         reasons.append("a persona skill appears in the title")
 
+    # The location is one signal, counted once. A posting's own location
+    # string and the place the portal found it in are two ways of saying the
+    # same thing, and adding them together would let one posting count its
+    # location twice.
+    best_location = 0.0
+    location_reason = ""
     for phrase, weight in terms.get("locations", []):
         if phrase in location or phrase in title:
-            total += weight
-            reasons.append(f"location '{phrase}' matches")
-            break
+            if weight > best_location:
+                best_location = weight
+                location_reason = f"location '{phrase}' matches"
+
+    target_key = str(job.get("target_place") or "")
+    target_weight = terms.get("servable", {}).get(target_key)
+    if target_weight:
+        scope = str(job.get("target_scope") or "")
+        effective = target_weight
+        if scope and scope != "exact":
+            effective *= WIDER_SCOPE_FACTOR
+        if effective > best_location:
+            best_location = effective
+            name = terms.get("servable_names", {}).get(target_key, target_key)
+            location_reason = f"the posting was found in {name}"
+
+    if best_location:
+        total += best_location
+        if location_reason:
+            reasons.append(location_reason)
 
     if any(marker in title for marker in terms.get("senior", [])):
         total -= 18.0

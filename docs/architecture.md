@@ -198,6 +198,29 @@ A place the catalogue does not know produces no search at all, and the run
 says so. `tools/places.py` resolves what a person typed into a catalogue key,
 or returns the candidates for the agent to ask about.
 
+## Where the candidate is
+
+The search says where to look. The location gate decides whether a posting
+that comes back is somewhere the candidate could take the job, and those are
+different questions. Conflating them is what makes a search for "roles in
+Egypt" come back with nothing for a candidate who lives in Egypt.
+
+Three facts make the difference, and all three are deterministic:
+
+- **The home place.** `identity.location` says where the candidate lives. A
+  place they already live in is a place they can serve, so an on-site role
+  there is never gated out. `tools/location_gate.py` resolves it, and
+  `tools/rank_state.py` will not let a home-place posting be vetoed on
+  location grounds.
+- **The servable places.** The user's own list, with the countries each one
+  covers and the conditions attached to it - sponsorship, relocation, remote
+  from home. The scorer is handed these and judges the posting's own wording
+  against them; it never works out the geography for itself.
+- **The market.** A portal that answers `--country EG` with postings in the
+  UAE is not answering the question. `tools/market.py` checks a posting's own
+  location string against the country that was searched, and drops the
+  outliers before they cost a fetch and a model's attention.
+
 ## Where the layout rules live
 
 `tools/paths.py` is the only place a path is written down. `tools/policy.py`

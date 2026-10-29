@@ -181,6 +181,29 @@ def entry_location_verdict(entry: dict) -> str | None:
     return legacy if legacy in ("PASS", "FAIL", "FLAG") else None
 
 
+def home_place_for(persona_slug: str | None):
+    """Return the candidate's home place, or None when it cannot be worked out.
+
+    A posting in the place the candidate already lives in is not a location
+    problem. The scorer judges the posting's own wording; this is the
+    deterministic fact underneath that judgement - the candidate is in Egypt,
+    so an on-site role in Egypt is somewhere they can be.
+    """
+    try:
+        from location_gate import home_place
+        from places import load_catalogue
+        from profile_query import load_yaml
+        from paths import persona_yaml, profile_inputs_path
+
+        inputs = load_yaml(profile_inputs_path())
+        persona = load_yaml(persona_yaml(persona_slug))
+        if not persona:
+            return None
+        return home_place(inputs, persona, load_catalogue())
+    except Exception:
+        return None
+
+
 def cmd_candidates(args) -> int:
     _, seen = load_state(args.state)
     excluded = tracker_pairs(args.tracker)
@@ -325,6 +348,13 @@ def cmd_apply(args) -> int:
         sys.exit("results file must be a JSON array of scoring objects")
 
     rows, expired, unreachable, gave_up, errors = [], [], [], [], []
+    overrides: list[dict] = []
+    home = home_place_for(getattr(args, "persona", None))
+    catalogue = None
+    if home:
+        from places import load_catalogue
+
+        catalogue = load_catalogue()
     for result in results:
         if not isinstance(result, dict):
             errors.append({"key": None, "error": "result is not an object"})
@@ -437,6 +467,36 @@ def cmd_apply(args) -> int:
         entry["rank_verdict"] = band(score)
         entry["rank_date"] = today.isoformat()
         entry["location_verdict"] = result.get("location_verdict") or legacy or "PASS"
+        entry.pop("location_note", None)
+        note = result.get("location_note")
+        if isinstance(note, str) and note.strip() and entry["location_verdict"] != "PASS":
+            entry["location_note"] = " ".join(note.split())[:300]
+
+        # The home place is never gated. A posting in the country the
+        # candidate already lives in cannot be a location failure, so a FAIL
+        # on a home-place posting is downgraded to FLAG - visible, not vetoed.
+        if entry["location_verdict"] == "FAIL" and home and catalogue is not None:
+            from location_gate import names_home
+
+            if names_home(entry.get("location"), home, catalogue):
+                entry["location_verdict"] = "FLAG"
+                entry["location_note"] = (
+                    f"The posting is in {home.get('name')}, where the candidate "
+                    "already lives. Downgraded from FAIL by the home-place rule; "
+                    "check the on-site wording."
+                )
+                overrides.append(
+                    {
+                        "key": key,
+                        "title": entry.get("title"),
+                        "company": entry.get("company"),
+                        "location": entry.get("location"),
+                        "from": "FAIL",
+                        "to": "FLAG",
+                        "reason": entry["location_note"],
+                    }
+                )
+
         entry["language_gate"] = result.get("language_gate") or "PASS"
         if entry["language_gate"] == "PASS":
             entry.pop("language_note", None)
@@ -480,6 +540,7 @@ def cmd_apply(args) -> int:
                 "score": score,
                 "verdict": entry["rank_verdict"],
                 "location_verdict": entry["location_verdict"],
+                "location_note": entry.get("location_note"),
                 "language_gate": entry["language_gate"],
                 "language_note": entry.get("language_note"),
                 "deadline": entry.get("deadline"),
@@ -506,6 +567,7 @@ def cmd_apply(args) -> int:
                 "expired": expired,
                 "unreachable": unreachable,
                 "gave_up": gave_up,
+                "location_overrides": overrides,
                 "errors": errors,
                 "written": not args.dry_run,
             },

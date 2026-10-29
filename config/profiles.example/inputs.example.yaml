@@ -18,6 +18,9 @@ identity:
   name: Your Name
   email: you@example.com
   phone: "+00 000 000 0000"
+  # Where you live, as "City, Country". This is your home place: it is not a
+  # search preference, it is what the location gate accepts. An on-site role
+  # in the city you already live in is never gated out.
   location: Your City, Your Country
   links:
     github: github.com/your-handle
@@ -61,6 +64,9 @@ preferences:
   # Each portal expresses a place its own way, and a portal that cannot
   # express one searches a wider area instead. That widening is reported in
   # the run summary - it is never silent.
+  #
+  # Leave the list empty and the search is remote roles anywhere. The default
+  # is reported in the run summary too, so it is never a silent one either.
   locations:
     # Roles based in Egypt.
     - place: Egypt
@@ -84,6 +90,10 @@ preferences:
     # A second entry for the same place with a different mode is allowed -
     # for instance MENA remote, and MENA on-site with relocation support.
     # Each entry is its own set of searches.
+    #
+    # A mode that accepts more than one way of working - `onsite_remote_hybrid`
+    # or `remote_or_relocation` - is sent with no work-mode filter at all, so
+    # postings that declare no work mode are included too.
 
   work_authorization: >-
     Describe your status and what an employer would need to do to hire you
