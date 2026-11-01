@@ -87,7 +87,24 @@ Inside OpenCode:
 /find-jobs           # search, score, report
 ```
 
-Your first report lands in `reports/<persona>/jobs-<timestamp>.md` and `.html`.
+Your first report lands in `reports/<persona>/YYYY-MM-DD/jobs-YYYY-MM-DD-HH-MM.md` (and `.html`) — timestamped in **Cairo time (GMT+2)**, grouped by day.
+
+## Smart query generation (strict & guarded)
+
+`/find-jobs` now runs a **query guard** before searching:
+
+1. **Base queries** — generated deterministically from your persona by `profile_query.py`
+2. **Agent proposes up to 2 extra queries** — learned from high-scoring jobs in prior runs
+3. **Query guard validates** — `tools/query_guard.py` rejects any query carrying:
+   - Portal filter words (junior, senior, remote, hybrid, sponsorship, etc.)
+   - Fewer than 2 or more than 4 words
+   - Repeats of a base query
+   - Over the 2-query cap
+4. **Only validated queries reach the portals** — the run summary reports accepted/rejected
+
+This stops the model from "overthinking" queries and producing searches that match nothing.
+
+---
 
 ### The steps in detail
 
