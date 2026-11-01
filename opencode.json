@@ -9,13 +9,21 @@
       "bun *": "allow",
       "bun --version": "allow",
       "python *": "allow",
-      "python3 *": "allow"
+      "python3 *": "allow",
+      "mkdir *": "allow",
+      "ls *": "allow",
+      "cat *": "allow",
+      "cp *": "allow",
+      "mv *": "allow",
+      "sh *": "allow"
     },
     "edit": {
-      "*": "ask"
+      "*": "ask",
+      "profiles/**/state/**": "allow"
     },
     "write": {
-      "*": "ask"
+      "*": "ask",
+      "profiles/**/state/**": "allow"
     },
     "read": {
       "*": "allow",
@@ -29,8 +37,11 @@
       "*": "allow"
     },
     "task": {
-      "*": "ask",
+      "*": "allow",
       "posting-scorer": "allow"
+    },
+    "external_directory": {
+      "*": "allow"
     }
   }
 }

@@ -10,19 +10,21 @@ permission:
     "*": deny
     "reports/**": allow
     "profiles/**/state/**": allow
+  write:
+    "*": deny
+    "reports/**": allow
+    "profiles/**/state/**": allow
   webfetch: allow
   websearch: allow
   bash:
     "*": deny
-    "bun run .agents/skills/freehire-search/cli/src/cli.ts *": allow
-    "bun run .agents/skills/linkedin-search/cli/src/cli.ts *": allow
-    "bun run .agents/skills/jobicy-search/cli/src/cli.ts *": allow
+    "bun run .agents/skills/*/cli/src/cli.ts *": allow
     "bun --version": allow
     "python3 tools/*.py *": allow
     "python3 tools/web/*.py *": allow
     "python3 tools/extract_resume.py *": allow
-    "mkdir -p *": allow
-    "ls *": allow
+    "mkdir -p profiles/**/state/scratch": allow
+    "ls profiles/**/state/**": allow
 ---
 
 You run the job search and write the report. You never submit an application,
@@ -53,20 +55,47 @@ It returns:
 Read the portal's own SKILL.md before calling it. Use the flags it documents.
 Do not guess a flag; these CLIs reject unknown ones.
 
-## Query generation
+## Query generation (strict)
 
-The queries above are the starting point. Improve them from what has worked
-before:
+The base queries from `profile_query.py` are already good. You may add **at
+most 2** more, learned from what scored well last time. You may add **none** -
+that is a fine outcome and is the right one when you are not sure.
 
-- Read `profiles/<persona>/state/seen_jobs.json` and look at the jobs that
-  scored 75 or above.
-- Extract what they had in common: job titles, skills, the phrasing of the
-  role, the seniority wording.
-- Add one or two queries that target that pattern, using terms that appear in
-  real postings.
+**A query is keywords only: a role plus the skills that go with it.** Never
+put a filter word in one. Seniority, work mode, geography and recency are
+portal flags, so a query carrying them matches nothing:
 
-Do not write a query that copies a whole job description. A query is a handful
-of keywords a recruiter would type.
+- **Never use:** junior, senior, middle, staff, principal, lead, graduate,
+  fresher, entry level, trainee, internship, manager, director, tech lead,
+  head of, remote, hybrid, on-site, onsite, sponsorship, visa, citizen,
+  relocation, clearance, work permit, work authorization.
+
+**Do this:**
+
+1. Read `profiles/<persona>/state/seen_jobs.json`. Look only at the entries
+   with `rank_score >= 75`.
+2. From those, take the job titles and the skills that keep recurring.
+3. Build at most 2 queries in the shape `<role> <skill>` or
+   `<role> <skill> <skill>`. 2 to 4 words each.
+4. Write them to `profiles/<persona>/state/scratch/added_queries.json` in
+   exactly this shape:
+
+```json
+{
+  "added_queries": [
+    {"query": "Applied AI Engineer RAG", "source": "top_job:Applied AI Engineer"},
+    {"query": "LLM Application Engineer Python", "source": "skill:Python"}
+  ]
+}
+```
+
+Write `{"added_queries": []}` when there is no clear pattern.
+
+**Weaker-model safeguard:** if you cannot produce the JSON above on your first
+attempt, write `{"added_queries": []}` and move on. Do not retry, do not
+reason further, and do not write your own script to check your work -
+`tools/query_guard.py` does that in Step 3.5. The base queries are already
+strong, and an empty list costs nothing.
 
 ## Scoring
 
@@ -85,7 +114,28 @@ yourself and write it by hand.
 
 ## The report
 
-Write `reports/<persona>/jobs-<timestamp>.md` and the matching `.html`.
+Generate a Cairo-time timestamp and write the report into a date-named subdirectory:
+
+```bash
+python3 -c "
+from datetime import datetime, timezone, timedelta
+cairo = timezone(timedelta(hours=2))
+now = datetime.now(cairo)
+date_dir = now.strftime('%Y-%m-%d')
+ts = now.strftime('%Y-%m-%d-%H-%M')
+print(f'{date_dir} {ts}')
+"
+```
+
+Capture output → `DATE_DIR` and `TS`. Then:
+
+```bash
+mkdir -p reports/<persona>/$DATE_DIR
+```
+
+Write the report to:
+- `reports/<persona>/$DATE_DIR/jobs-$TS.md`
+- `reports/<persona>/$DATE_DIR/jobs-$TS.html`
 
 The report is for someone deciding where to spend an afternoon. Lead with what
 is worth their time.

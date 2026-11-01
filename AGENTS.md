@@ -42,6 +42,7 @@ profiles/<persona>/
 | What does the resume support? | `profiles/<persona>/profile.yaml` |
 | Which persona is active? | `profiles/index.json` |
 | What do I search for? | `python3 tools/profile_query.py --persona <p> --format json` |
+| Which extra queries are valid? | `python3 tools/query_guard.py --persona <p> --in <file> --out <file>` |
 | How is a posting scored? | `.opencode/agents/posting-scorer.md` |
 | What does a run do? | `.opencode/commands/find-jobs.md` |
 | Which places exist? | `config/places.yaml` |
@@ -54,6 +55,7 @@ profiles/<persona>/
 | `tools/extract_resume.py` | Résumé file to plain text, with a hash |
 | `tools/profile_build.py` | Validate, build and finalise a persona |
 | `tools/profile_query.py` | The search contract: queries, portal targets, filters |
+| `tools/query_guard.py` | Checks the agent's extra queries against the portal filters |
 | `tools/places.py` | The place catalogue, and the free-text resolver |
 | `tools/portal_map.py` | A place and a work mode become each portal's flags |
 | `tools/location_gate.py` | The home place, and the places the candidate can serve |

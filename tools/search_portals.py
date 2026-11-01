@@ -17,12 +17,15 @@ report.
 
 Usage:
     python3 tools/search_portals.py --persona <slug> --limit <n>
+    python3 tools/search_portals.py --persona <slug> --limit <n> \
+        --extra-queries-file profiles/<slug>/state/scratch/validated_queries.json
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -144,6 +147,63 @@ def build_calls(contract: dict) -> list[dict]:
                 }
             )
     return calls
+
+
+def load_extra_queries(path: Path | None) -> list[dict]:
+    """Return the validated extra queries from a file.
+
+    The file is the output of ``tools/query_guard.py`` - the queries have
+    already been checked against the portal filter vocabularies. A missing
+    file, or one holding nothing usable, contributes no queries: the base
+    set from ``profile_query.py`` is always enough to run a search.
+    """
+    if path is None or not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    entries = data.get("added_queries") if isinstance(data, dict) else data
+    if not isinstance(entries, list):
+        return []
+
+    queries: list[dict] = []
+    for entry in entries:
+        if isinstance(entry, dict):
+            text = str(entry.get("query") or "").strip()
+            source = str(entry.get("source") or "")
+        else:
+            text = str(entry or "").strip()
+            source = ""
+        if text:
+            queries.append({"query": text, "source": source})
+    return queries
+
+
+def merge_queries(base: list[dict], extra: list[dict]) -> list[dict]:
+    """Merge the extra queries into the base set, deduplicated.
+
+    An extra query that repeats a base one is dropped: the base set already
+    searched for it, and a second call for the same terms is a wasted call
+    against a portal's rate limit.
+    """
+    merged = list(base)
+    seen = {" ".join(str(item.get("query", "")).split()).lower() for item in merged}
+    for item in extra:
+        text = " ".join(str(item.get("query", "")).split())
+        key = text.lower()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        merged.append(
+            {
+                "query": text,
+                "kind": "agent-extra",
+                "priority": 3,
+                "source": [item.get("source") or "agent:learned"],
+            }
+        )
+    return merged
 
 
 def relaxed_call(call: dict, drop: tuple[str, ...]) -> dict | None:
@@ -535,6 +595,11 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=10, help="postings to prepare for scoring")
     parser.add_argument("--out-dir", type=Path, help="directory for the run files")
     parser.add_argument("--date", help="today's date (YYYY-MM-DD), for first_seen")
+    parser.add_argument(
+        "--extra-queries-file",
+        type=Path,
+        help="a validated extra-queries file (tools/query_guard.py output)",
+    )
     args = parser.parse_args()
 
     persona_slug = args.persona or active_persona()
@@ -558,6 +623,14 @@ def main() -> int:
     contract = build_contract(persona, inputs)
     contract["search_queries"] = build_queries(persona, inputs)
 
+    # The agent may propose extra queries. They arrive already validated by
+    # tools/query_guard.py, which is what stops a query from carrying a
+    # portal filter word and matching nothing.
+    extra_queries = load_extra_queries(args.extra_queries_file)
+    base_count = len(contract["search_queries"])
+    contract["search_queries"] = merge_queries(contract["search_queries"], extra_queries)
+    extra_count = len(contract["search_queries"]) - base_count
+
     calls = build_calls(contract)
     if not calls:
         print(
@@ -570,6 +643,8 @@ def main() -> int:
                         "no portal produced a call - check preferences.locations in "
                         "profiles/inputs.yaml"
                     ),
+                    "base_queries": base_count,
+                    "extra_queries": extra_count,
                     "locations_defaulted": contract.get("locations_defaulted", False),
                     "skipped_targets": contract.get("portal_skipped", []) or [],
                     "unresolved_locations": contract.get("locations_unresolved", []) or [],
@@ -696,6 +771,9 @@ def main() -> int:
         "new": len(ordered),
         "prepared": len(prepared),
         "deferred": deferred,
+        "base_queries": base_count,
+        "extra_queries": extra_count,
+        "extra_query_texts": [str(item.get("query", "")) for item in extra_queries],
         "store_file": str((out_dir / "store.json").relative_to(ROOT)),
         "prepared_file": str((out_dir / "prepared.json").relative_to(ROOT)),
         "errors": errors,

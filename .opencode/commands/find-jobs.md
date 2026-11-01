@@ -72,10 +72,39 @@ are portal flags and already appear in `portal_targets`. Never add "junior" or
 "remote" to a query - no job title contains those words, and adding them
 matches nothing.
 
+### Step 3.5: Validate the agent's extra queries
+
+The agent may have proposed up to two extra queries, written to
+`profiles/<persona>/state/scratch/added_queries.json`. They carry keywords
+only, but "keywords only" is exactly the thing a model gets wrong when it
+starts reasoning about which words a portal would filter on. So the check is
+deterministic and lives in a tool:
+
+```bash
+python3 -c "
+import pathlib
+pathlib.Path('profiles/<persona>/state/scratch').mkdir(parents=True, exist_ok=True)
+"
+python3 tools/query_guard.py --persona <persona> --in profiles/<persona>/state/scratch/added_queries.json --out profiles/<persona>/state/scratch/validated_queries.json
+```
+
+The guard rejects a query that carries a portal filter word ("junior",
+"remote", "sponsorship"), one with fewer than 2 or more than 4 words, one
+that repeats a base query, and any beyond the cap of 2. It prints what it
+accepted and what it rejected, with the reason.
+
+- If the file is missing, the guard accepts nothing and the run uses the base
+  queries only. That is a normal outcome, not a failure.
+- **Report the rejected queries** in the report, with their reasons. The user
+  needs to see what was thrown away and why.
+- Do not try to work around a rejection. The guard's banned list comes from
+  `profiles/inputs.yaml` and `config/portals.yaml` - the same sources the
+  portals themselves use.
+
 ### Step 4: Search, select and fetch
 
 ```bash
-python3 tools/search_portals.py --persona <persona> --limit <limit>
+python3 tools/search_portals.py --persona <persona> --limit <limit> --extra-queries-file profiles/<persona>/state/scratch/validated_queries.json
 ```
 
 **This one command does the searching, the selecting and the fetching.** It
@@ -91,8 +120,12 @@ fetches the full posting text, runs the guard over it, and writes:
 - `profiles/<persona>/state/scratch/raw.json` - every hit, for reference
 
 It prints a summary: `calls`, `hits`, `already_seen`, `new`, `prepared`,
-`deferred`, `store_file`, `prepared_file` and `errors`.
+`deferred`, `base_queries`, `extra_queries`, `store_file`, `prepared_file` and
+`errors`.
 
+- **Report `base_queries` and `extra_queries`** in the report. `extra_queries`
+  is how many learned queries were added on top of the base set - it is 0 when
+  the agent proposed nothing or the guard rejected everything.
 - **Report the `errors` list** in the report. A portal that fails is skipped,
   never fatal.
 - **Report `relaxed_searches`** in the report. A portal's facets are ANDed,
@@ -234,7 +267,28 @@ guessed at.
 
 ### Step 9: Write the report
 
-Write `reports/<persona>/jobs-<timestamp>.md` and the matching `.html`.
+Generate a Cairo-time timestamp and write the report into a date-named subdirectory:
+
+```bash
+python3 -c "
+from datetime import datetime, timezone, timedelta
+cairo = timezone(timedelta(hours=2))
+now = datetime.now(cairo)
+date_dir = now.strftime('%Y-%m-%d')
+ts = now.strftime('%Y-%m-%d-%H-%M')
+print(f'{date_dir} {ts}')
+"
+```
+
+Capture output → `DATE_DIR` and `TS`. Then:
+
+```bash
+mkdir -p reports/<persona>/$DATE_DIR
+```
+
+Write the report to:
+- `reports/<persona>/$DATE_DIR/jobs-$TS.md`
+- `reports/<persona>/$DATE_DIR/jobs-$TS.html`
 
 The report contains:
 
