@@ -361,6 +361,7 @@ See `SECURITY.md` for the details.
 | A search covered more than you asked | The run summary lists widened searches; `docs/portals.md` explains why |
 | The report is empty of new jobs | Everything was seen before - check `profiles/<persona>/state/seen_jobs.json` |
 | `resume changed since the profile was built` | Run `/profile-build` to refresh the persona |
+| `Database is not empty and has no session table` | OpenCode v1 (1.19.x) opened a database created by v2 (2.x). Run `make doctor` to diagnose. `./run.sh` auto-isolates to a per-version DB; or set `OPENCODE_DB=~/.local/share/opencode/job-hunter-v1.db` manually. Migration is one-way; do not delete the v2 DB if you need its history. |
 
 ---
 

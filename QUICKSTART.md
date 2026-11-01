@@ -24,6 +24,8 @@ Then, inside OpenCode:
 /find-jobs
 ```
 
-Your first report is in `reports/<persona>/`.
+Your first report is in `reports/<persona>/` (timestamped in Cairo time, grouped by day).
+
+**Note:** `./run.sh` automatically isolates the OpenCode database if a v1/v2 version conflict is detected (`Database is not empty and has no session table`). The isolated DB is stored alongside the global one and leaves the original untouched. Run `make doctor` to see the current state.
 
 Full instructions: [README.md](README.md)

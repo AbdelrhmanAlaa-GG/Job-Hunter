@@ -226,3 +226,13 @@ Three facts make the difference, and all three are deterministic:
 `tools/paths.py` is the only place a path is written down. `tools/policy.py`
 holds the shared constants. `tools/check_repo.py` holds the rules the
 repository must keep satisfying, and the CI runs it on every change.
+
+## Launch-time database guard
+
+`run.sh` (and `make run`) includes a preflight that detects the
+"Database is not empty and has no session table" error: a v1 OpenCode
+(1.19.x) attempting to open a database created by v2 (2.x). If detected,
+it automatically sets `OPENCODE_DB` to an isolated per-major-version file
+(`job-hunter-v1.db` or `job-hunter-v2.db` in the same data directory)
+so the run succeeds without touching the global database. Run
+`make doctor` to see the current state and all databases in the data dir.

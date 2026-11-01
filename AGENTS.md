@@ -56,6 +56,7 @@ profiles/<persona>/
 | `tools/profile_build.py` | Validate, build and finalise a persona |
 | `tools/profile_query.py` | The search contract: queries, portal targets, filters |
 | `tools/query_guard.py` | Checks the agent's extra queries against the portal filters |
+| `tools/opencode_db.py` | Inspects OpenCode SQLite DB, classifies schema, suggests isolation |
 | `tools/places.py` | The place catalogue, and the free-text resolver |
 | `tools/portal_map.py` | A place and a work mode become each portal's flags |
 | `tools/location_gate.py` | The home place, and the places the candidate can serve |
