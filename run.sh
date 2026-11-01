@@ -138,7 +138,8 @@ if [ "${1:-}" = "--doctor" ]; then
     "$OPENCODE_BIN" debug paths 2>/dev/null | grep -E '^data' | sed 's/^/    /' || echo "  (unavailable)"
     echo ""
 
-    DB_PATH="$("$OPENCODE_BIN" db path 2>/dev/null || true)"
+    DATA_DIR="$("$OPENCODE_BIN" debug paths 2>/dev/null | awk '/^data[[:space:]]+/ {print $2}' || true)"
+    DB_PATH="${DATA_DIR}/opencode.db"
     if [ -n "$DB_PATH" ]; then
         echo "  Primary database: $DB_PATH"
         if [ -f "$DB_PATH" ]; then
@@ -152,8 +153,7 @@ if [ "${1:-}" = "--doctor" ]; then
     export OPENCODE_DB_PRIMARY="${DB_PATH:-none}"
 
     # List all sibling DBs and their states
-    if [ -n "$DB_PATH" ]; then
-        DATA_DIR="$(dirname "$DB_PATH")"
+    if [ -n "$DATA_DIR" ]; then
         echo ""
         echo "  All databases in $DATA_DIR:"
         for db in "$DATA_DIR"/*.db; do
@@ -187,12 +187,14 @@ OPENCODE_VERSION="$("$OPENCODE_BIN" --version 2>/dev/null | head -n1 || true)"
 OPENCODE_MAJOR="${OPENCODE_VERSION%%.*}"
 
 # Only check for v1 binaries; v2 understands session_v2.
+# Use 'debug paths' (safe, doesn't open DB) to get the data directory, then construct
+# the default DB path ($data_dir/opencode.db for latest/prod channel). 'db path' crashes on v2-only.
 if [ -z "${OPENCODE_DB:-}" ] && [ "$OPENCODE_MAJOR" = "1" ]; then
-    DB_PATH="$("$OPENCODE_BIN" db path 2>/dev/null || true)"
-    if [ -n "$DB_PATH" ] && [ -f "$DB_PATH" ]; then
+    DATA_DIR="$("$OPENCODE_BIN" debug paths 2>/dev/null | awk '/^data[[:space:]]+/ {print $2}' || true)"
+    DB_PATH="${DATA_DIR}/opencode.db"
+    if [ -n "$DATA_DIR" ] && [ -f "$DB_PATH" ]; then
         ST=$(python3 tools/opencode_db.py state "$DB_PATH" 2>/dev/null || echo "error")
         if [ "$ST" = "v2-only" ]; then
-            DATA_DIR="$(dirname "$DB_PATH")"
             ISOLATED="${DATA_DIR}/job-hunter-v${OPENCODE_MAJOR}.db"
             export OPENCODE_DB="$ISOLATED"
             echo ""
