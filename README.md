@@ -361,7 +361,7 @@ See `SECURITY.md` for the details.
 | A search covered more than you asked | The run summary lists widened searches; `docs/portals.md` explains why |
 | The report is empty of new jobs | Everything was seen before - check `profiles/<persona>/state/seen_jobs.json` |
 | `resume changed since the profile was built` | Run `/profile-build` to refresh the persona |
-| `Database is not empty and has no session table` | OpenCode v1 (1.19.x) opened a database created by v2 (2.x). Run `make doctor` to diagnose. `./run.sh` auto-isolates to a per-version DB; or set `OPENCODE_DB=~/.local/share/opencode/job-hunter-v1.db` manually. Migration is one-way; do not delete the v2 DB if you need its history. |
+| `Database is not empty and has no session table` | You ran an older launcher (before the per-major DB fix). Job Hunter now uses its own per-major databases and never touches the global `opencode.db`. Run `make doctor` to see your Job Hunter DBs. If your global v2 DB was affected, see the recovery guide below. |
 
 ---
 
@@ -375,6 +375,28 @@ See `SECURITY.md` for the details.
 | `docs/portals.md` | The portals, their flags and their terms |
 | `SECURITY.md` | The threat model |
 | `CONTRIBUTING.md` | How to contribute |
+
+## Recovery guide (for users affected by the old launcher)
+
+If you ran Job Hunter before the per-major DB fix (commit `5fc54fc` or earlier),
+your global OpenCode database may have been emptied or migrated.
+
+### Check your global database
+```bash
+make doctor
+# or
+python3 tools/opencode_db.py state ~/.local/share/opencode/opencode.db
+```
+
+### If the state is `empty` or `v1` (was `v2-only`)
+- Your v2 session history is lost unless you have a backup.
+- Check for SQLite WAL/SHM files (`opencode.db-wal`, `opencode.db-shm`) — they may contain recoverable data.
+- Restore from backup if available.
+
+### Going forward
+- Job Hunter now uses isolated per-major databases. Your global `opencode.db` is never touched.
+- Run `make doctor` to see the new per-major Job Hunter databases.
+- If you want to import an existing DB into Job Hunter: `./run.sh --import-db /path/to/your.db`
 
 ## Licence
 

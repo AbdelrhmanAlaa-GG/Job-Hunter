@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -157,6 +158,45 @@ def ensure_persona_dirs(persona: str | None = None) -> None:
     """Create the directories a run needs. Safe to call repeatedly."""
     for directory in (state_dir(persona), scratch_dir(persona), reports_dir(persona), extracted_dir()):
         directory.mkdir(parents=True, exist_ok=True)
+
+
+def job_hunter_data_dir() -> Path:
+    """Return the Job Hunter data directory.
+
+    Resolution order:
+    1. JOB_HUNTER_DATA_DIR environment variable
+    2. XDG_DATA_HOME/job-hunter (Linux/Unix)
+    3. ~/Library/Application Support/job-hunter (macOS)
+    4. %APPDATA%/job-hunter (Windows)
+    5. ~/.local/share/job-hunter (fallback)
+    """
+    env = os.environ.get("JOB_HUNTER_DATA_DIR")
+    if env:
+        return Path(env).expanduser().resolve()
+
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "job-hunter"
+    if sys.platform == "win32":
+        appdata = os.environ.get("APPDATA") or os.environ.get("LOCALAPPDATA")
+        if appdata:
+            return Path(appdata) / "job-hunter"
+        return Path.home() / "AppData" / "Local" / "job-hunter"
+
+    xdg = os.environ.get("XDG_DATA_HOME")
+    if xdg:
+        return Path(xdg).expanduser() / "job-hunter"
+    return Path.home() / ".local" / "share" / "job-hunter"
+
+
+def job_hunter_db_path(major: int | str) -> Path:
+    """Return the OpenCode database path for the given major version.
+
+    The database lives at <data_dir>/v<major>/opencode/opencode.db
+    which is where OpenCode expects it when XDG_DATA_HOME is set to <data_dir>/v<major>.
+    """
+    data_dir = job_hunter_data_dir()
+    major_str = str(major)
+    return data_dir / f"v{major_str}" / "opencode" / "opencode.db"
 
 
 __all__ = [

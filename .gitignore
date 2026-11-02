@@ -65,6 +65,10 @@ venv/
 *.jpeg
 *.png
 
+# SQLite WAL/SHM files (created by OpenCode)
+*.db-wal
+*.db-shm
+
 # --- OS / editor -------------------------------------------------------------
 .DS_Store
 Thumbs.db

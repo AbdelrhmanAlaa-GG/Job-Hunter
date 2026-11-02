@@ -227,12 +227,21 @@ Three facts make the difference, and all three are deterministic:
 holds the shared constants. `tools/check_repo.py` holds the rules the
 repository must keep satisfying, and the CI runs it on every change.
 
-## Launch-time database guard
+## Launch-time database isolation
 
-`run.sh` (and `make run`) includes a preflight that detects the
-"Database is not empty and has no session table" error: a v1 OpenCode
-(1.19.x) attempting to open a database created by v2 (2.x). If detected,
-it automatically sets `OPENCODE_DB` to an isolated per-major-version file
-(`job-hunter-v1.db` or `job-hunter-v2.db` in the same data directory)
-so the run succeeds without touching the global database. Run
-`make doctor` to see the current state and all databases in the data dir.
+`run.sh` (and `make run`) no longer shares the global OpenCode database.
+Instead, it probes the OpenCode major version in a sandbox (using only
+`--version` with `HOME` and `XDG_*` redirected to temporary directories),
+then sets `XDG_DATA_HOME` to a Job Hunter–owned per-major directory:
+
+```
+$JOB_HUNTER_DATA_DIR/v<major>/opencode/opencode.db
+```
+
+This works on all OpenCode versions (v1.0.0 through v2.x) because all of
+them honor `XDG_DATA_HOME` and place their database at
+`$XDG_DATA_HOME/opencode/opencode.db`.
+
+The global OpenCode database (`~/.local/share/opencode/opencode.db`) is
+never read, opened, or modified. Run `make doctor` to see the Job Hunter
+databases and their schema states.

@@ -26,6 +26,6 @@ Then, inside OpenCode:
 
 Your first report is in `reports/<persona>/` (timestamped in Cairo time, grouped by day).
 
-**Note:** `./run.sh` automatically isolates the OpenCode database if a v1/v2 version conflict is detected (`Database is not empty and has no session table`). The isolated DB is stored alongside the global one and leaves the original untouched. Run `make doctor` to see the current state.
+**Note:** Job Hunter uses its own per-major OpenCode databases (`~/.local/share/job-hunter/v1/` and `v2/`). The global `opencode.db` is never read or modified. Run `make doctor` to see the current state.
 
 Full instructions: [README.md](README.md)

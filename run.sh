@@ -9,6 +9,7 @@
 #   ./run.sh              start OpenCode
 #   ./run.sh --check      run the checks and exit without starting OpenCode
 #   ./run.sh --doctor     run checks and print OpenCode/DB diagnostics
+#   ./run.sh --import-db <path>  import an existing DB into the per-major Job Hunter DB
 
 set -euo pipefail
 
@@ -131,82 +132,117 @@ if [ "${1:-}" = "--doctor" ]; then
     command -v opencode
     which -a opencode 2>/dev/null || true
     echo ""
-    echo "  Version:"
-    "$OPENCODE_BIN" --version 2>/dev/null || echo "  (unavailable)"
-    echo ""
-    echo "  Data directory:"
-    "$OPENCODE_BIN" debug paths 2>/dev/null | grep -E '^data' | sed 's/^/    /' || echo "  (unavailable)"
+
+    # Probe version in a sandbox (never touches real user data)
+    sandbox="$(mktemp -d)"
+    trap 'rm -rf "$sandbox"' RETURN
+    mkdir -p "$sandbox"/{home,data,config,cache,state}
+    major="$(HOME="$sandbox/home" \
+        XDG_DATA_HOME="$sandbox/data" \
+        XDG_CONFIG_HOME="$sandbox/config" \
+        XDG_CACHE_HOME="$sandbox/cache" \
+        XDG_STATE_HOME="$sandbox/state" \
+        "$OPENCODE_BIN" --version 2>/dev/null \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 | cut -d. -f1 || echo unknown)"
+    version_display="$(HOME="$sandbox/home" \
+        XDG_DATA_HOME="$sandbox/data" \
+        XDG_CONFIG_HOME="$sandbox/config" \
+        XDG_CACHE_HOME="$sandbox/cache" \
+        XDG_STATE_HOME="$sandbox/state" \
+        "$OPENCODE_BIN" --version 2>/dev/null | head -n1 || echo unavailable)"
+    echo "  Version (sandboxed): $version_display"
+    echo "  Major version: $major"
     echo ""
 
-    DATA_DIR="$("$OPENCODE_BIN" debug paths 2>/dev/null | awk '/^data[[:space:]]+/ {print $2}' || true)"
-    DB_PATH="${DATA_DIR}/opencode.db"
-    if [ -n "$DB_PATH" ]; then
-        echo "  Primary database: $DB_PATH"
-        if [ -f "$DB_PATH" ]; then
-            python3 tools/opencode_db.py state "$DB_PATH" | sed 's/^/    state: /'
-        else
-            echo "    state: missing"
-        fi
+    # Job Hunter database path for this major
+    jh_db="$(python3 tools/opencode_db.py db-path --major "$major" 2>/dev/null || echo unavailable)"
+    echo "  Job Hunter database: $jh_db"
+    if [ -f "$jh_db" ]; then
+        python3 tools/opencode_db.py state "$jh_db" 2>/dev/null | sed 's/^/    state: /'
     else
-        echo "  Primary database: (unavailable)"
+        echo "    state: missing (will be created on first run)"
     fi
-    export OPENCODE_DB_PRIMARY="${DB_PATH:-none}"
+    echo ""
 
-    # List all sibling DBs and their states
-    if [ -n "$DATA_DIR" ]; then
-        echo ""
-        echo "  All databases in $DATA_DIR:"
-        for db in "$DATA_DIR"/*.db; do
+    # List all Job Hunter databases
+    jh_data_dir="$(python3 -c "from paths import job_hunter_data_dir; print(job_hunter_data_dir())" 2>/dev/null || echo unavailable)"
+    if [ -d "$jh_data_dir" ]; then
+        echo "  All Job Hunter databases in $jh_data_dir:"
+        for db in "$jh_data_dir"/v*/opencode/opencode.db; do
             [ -f "$db" ] || continue
             st=$(python3 tools/opencode_db.py state "$db" 2>/dev/null || echo "error")
-            echo "    $(basename "$db"): $st"
+            echo "    $(basename "$(dirname "$(dirname "$db")")")/opencode/opencode.db: $st"
         done
     fi
 
     echo ""
-    echo "  Verdict: $(python3 - <<'PY'
-import os, sys, subprocess, json
-try:
-    db_path = os.environ.get("OPENCODE_DB_PRIMARY") or "none"
-    out = subprocess.check_output([sys.executable, "tools/opencode_db.py", "state", db_path], stderr=subprocess.DEVNULL, text=True).strip()
-    if out == "v2-only":
-        print("CONFLICT - v1 binary will crash. run.sh will auto-isolate.")
-    elif out in ("v1", "both", "empty"):
-        print("OK - v1 binary can open this database.")
-    else:
-        print("UNKNOWN - " + out)
-except Exception as e:
-    print("ERROR - " + str(e))
-PY
-)"
+    echo "  Note: Job Hunter uses its own per-major databases. The global OpenCode"
+    echo "  database (~/.local/share/opencode/opencode.db) is never read or modified."
     exit 0
 fi
 
-# --- 7. DB preflight: auto-isolate if a v1 binary would hit a v2-created DB ---
-OPENCODE_VERSION="$("$OPENCODE_BIN" --version 2>/dev/null | head -n1 || true)"
-OPENCODE_MAJOR="${OPENCODE_VERSION%%.*}"
-
-# Only check for v1 binaries; v2 understands session_v2.
-# Use 'debug paths' (safe, doesn't open DB) to get the data directory, then construct
-# the default DB path ($data_dir/opencode.db for latest/prod channel). 'db path' crashes on v2-only.
-if [ -z "${OPENCODE_DB:-}" ] && [ "$OPENCODE_MAJOR" = "1" ]; then
-    DATA_DIR="$("$OPENCODE_BIN" debug paths 2>/dev/null | awk '/^data[[:space:]]+/ {print $2}' || true)"
-    DB_PATH="${DATA_DIR}/opencode.db"
-    if [ -n "$DATA_DIR" ] && [ -f "$DB_PATH" ]; then
-        ST=$(python3 tools/opencode_db.py state "$DB_PATH" 2>/dev/null || echo "error")
-        if [ "$ST" = "v2-only" ]; then
-            ISOLATED="${DATA_DIR}/job-hunter-v${OPENCODE_MAJOR}.db"
-            export OPENCODE_DB="$ISOLATED"
-            echo ""
-            echo "  Database was created by OpenCode v2; using isolated v1 database at:"
-            echo "    $ISOLATED"
-            echo "  (Your global database at $DB_PATH is untouched.)"
-            echo ""
-        fi
+# --- 7. Import existing DB ----------------------------------------------------
+if [ "${1:-}" = "--import-db" ]; then
+    shift
+    src_db="${1:-}"
+    if [ -z "$src_db" ] || [ ! -f "$src_db" ]; then
+        fail "Usage: ./run.sh --import-db <path-to-existing-db>"
     fi
+    sandbox="$(mktemp -d)"
+    trap 'rm -rf "$sandbox"' RETURN
+    mkdir -p "$sandbox"/{home,data,config,cache,state}
+    major="$(HOME="$sandbox/home" \
+        XDG_DATA_HOME="$sandbox/data" \
+        XDG_CONFIG_HOME="$sandbox/config" \
+        XDG_CACHE_HOME="$sandbox/cache" \
+        XDG_STATE_HOME="$sandbox/state" \
+        "$OPENCODE_BIN" --version 2>/dev/null \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 | cut -d. -f1 || echo unknown)"
+    dst_db="$(python3 tools/opencode_db.py db-path --major "$major")"
+    mkdir -p "$(dirname "$dst_db")"
+    cp "$src_db" "$dst_db"
+    echo "  Imported $src_db -> $dst_db"
+    python3 tools/opencode_db.py state "$dst_db" | sed 's/^/    state: /'
+    exit 0
 fi
 
-# --- 8. Go ---------------------------------------------------------------------
+# --- 8. Launch preparation: per-major isolated database -----------------------
+# Probe the major version in a sandbox (never touches real user data)
+sandbox="$(mktemp -d)"
+trap 'rm -rf "$sandbox"' RETURN
+mkdir -p "$sandbox"/{home,data,config,cache,state}
+major="$(HOME="$sandbox/home" \
+    XDG_DATA_HOME="$sandbox/data" \
+    XDG_CONFIG_HOME="$sandbox/config" \
+    XDG_CACHE_HOME="$sandbox/cache" \
+    XDG_STATE_HOME="$sandbox/state" \
+    "$OPENCODE_BIN" --version 2>/dev/null \
+    | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 | cut -d. -f1 || echo unknown)"
+
+# Resolve Job Hunter database path for this major
+jh_db="$(python3 tools/opencode_db.py db-path --major "$major")"
+
+# Create parent directory
+mkdir -p "$(dirname "$jh_db")"
+
+# Check writability
+if [ ! -w "$(dirname "$jh_db")" ]; then
+    fail "Job Hunter database directory is not writable: $(dirname "$jh_db")"
+fi
+
+# Set XDG_DATA_HOME to the per-major Job Hunter directory so OpenCode
+# creates/uses the database at $jh_db (all versions honor this)
+export XDG_DATA_HOME="$(dirname "$(dirname "$jh_db")")"
+
+# First-run notice
+if [ ! -f "$jh_db" ]; then
+    echo ""
+    echo "  Job Hunter database: $jh_db"
+    echo "  First run: type /connect inside OpenCode to add your model provider."
+    echo ""
+fi
+
+# --- 9. Go ---------------------------------------------------------------------
 echo "  Persona:  $PERSONA"
 echo "  Reports:  reports/$PERSONA/"
 echo ""

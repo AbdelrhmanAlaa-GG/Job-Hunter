@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 
-from opencode_db import isolated_path, state
+from opencode_db import state
+from paths import job_hunter_data_dir, job_hunter_db_path
 
 
 class TestOpencodeDBState(unittest.TestCase):
@@ -58,7 +61,7 @@ class TestOpencodeDBState(unittest.TestCase):
 
     def test_empty(self):
         p = self.tmpdir / "empty.db"
-        sqlite3.connect(p).close()  # creates file with only sqlite_ tables
+        sqlite3.connect(p).close()
         self.assertEqual(state(p), "empty")
 
     def test_v1(self):
@@ -74,20 +77,36 @@ class TestOpencodeDBState(unittest.TestCase):
         self.assertEqual(state(p), "both")
 
 
-class TestIsolatedPath(unittest.TestCase):
-    def test_v1(self):
-        db = Path("/home/user/.local/share/opencode/opencode.db")
-        self.assertEqual(
-            isolated_path(db, 1),
-            Path("/home/user/.local/share/opencode/job-hunter-v1.db")
-        )
+class TestJobHunterPaths(unittest.TestCase):
+    def test_job_hunter_data_dir_env_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            custom = Path(tmp) / "custom-jh-data"
+            with patch.dict(os.environ, {"JOB_HUNTER_DATA_DIR": str(custom)}):
+                self.assertEqual(job_hunter_data_dir(), custom.resolve())
 
-    def test_v2(self):
-        db = Path("/home/user/.local/share/opencode/opencode.db")
-        self.assertEqual(
-            isolated_path(db, 2),
-            Path("/home/user/.local/share/opencode/job-hunter-v2.db")
-        )
+    def test_job_hunter_db_path_v1(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            custom = Path(tmp) / "jh-data"
+            with patch.dict(os.environ, {"JOB_HUNTER_DATA_DIR": str(custom)}):
+                db_path = job_hunter_db_path(1)
+                expected = custom / "v1" / "opencode" / "opencode.db"
+                self.assertEqual(db_path, expected)
+
+    def test_job_hunter_db_path_v2(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            custom = Path(tmp) / "jh-data"
+            with patch.dict(os.environ, {"JOB_HUNTER_DATA_DIR": str(custom)}):
+                db_path = job_hunter_db_path(2)
+                expected = custom / "v2" / "opencode" / "opencode.db"
+                self.assertEqual(db_path, expected)
+
+    def test_job_hunter_db_path_creates_parent_dirs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            custom = Path(tmp) / "jh-data"
+            with patch.dict(os.environ, {"JOB_HUNTER_DATA_DIR": str(custom)}):
+                db_path = job_hunter_db_path(1)
+                db_path.parent.mkdir(parents=True, exist_ok=True)
+                self.assertTrue(db_path.parent.exists())
 
 
 if __name__ == "__main__":

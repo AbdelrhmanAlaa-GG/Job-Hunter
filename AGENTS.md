@@ -56,7 +56,7 @@ profiles/<persona>/
 | `tools/profile_build.py` | Validate, build and finalise a persona |
 | `tools/profile_query.py` | The search contract: queries, portal targets, filters |
 | `tools/query_guard.py` | Checks the agent's extra queries against the portal filters |
-| `tools/opencode_db.py` | Inspects OpenCode SQLite DB, classifies schema, suggests isolation |
+| `tools/opencode_db.py` | Inspects OpenCode SQLite DB (read-only), classifies schema, resolves Job Hunter per-major DB paths |
 | `tools/places.py` | The place catalogue, and the free-text resolver |
 | `tools/portal_map.py` | A place and a work mode become each portal's flags |
 | `tools/location_gate.py` | The home place, and the places the candidate can serve |
@@ -119,6 +119,13 @@ store failure means the next run re-reports the same postings.
 first `--limit` postings and leaves the rest unseen, so a later run picks them
 up. Storing more than you score strands the surplus: they are "seen", so
 nothing selects them again, and they are never ranked.
+
+**Never invoke the target OpenCode binary against real user data for probing.**
+All version detection and database inspection must run in a sandbox with
+`HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, and
+`XDG_STATE_HOME` redirected to temporary directories. The only safe operation
+against real user data is read-only SQLite inspection via `tools/opencode_db.py`
+with `mode=ro`.
 
 ## Commands
 
